@@ -1,0 +1,18 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512">
+  <!-- Background plate -->
+  <rect x="16" y="16" width="480" height="480" rx="80" fill="#2f855a" stroke="#1a1a1a" stroke-width="20"/>
+  <!-- Plate circle -->
+  <circle cx="256" cy="250" r="150" fill="#fdf6e3" stroke="#1a1a1a" stroke-width="16"/>
+  <circle cx="256" cy="250" r="100" fill="none" stroke="#dcdfe1" stroke-width="6"/>
+  <!-- Fork -->
+  <g stroke="#1a1a1a" stroke-width="18" stroke-linecap="round">
+    <line x1="180" y1="110" x2="180" y2="200"/>
+    <line x1="180" y1="110" x2="180" y2="200" stroke-dasharray="30 30"/>
+  </g>
+  <!-- Knife -->
+  <g stroke="#1a1a1a" stroke-width="18" stroke-linecap="round">
+    <line x1="335" y1="110" x2="335" y2="200"/>
+  </g>
+  <!-- Heart accent -->
+  <path d="M256 400c-40-28-60-48-60-76 0-20 14-34 30-34 16 0 30 14 30 14s14-14 30-14c16 0 30 14 30 34 0 28-20 48-60 76z" fill="#e53e3e" stroke="#1a1a1a" stroke-width="12"/>
+</svg>
