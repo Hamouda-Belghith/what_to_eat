@@ -1,5 +1,5 @@
 import { getDb, type PendingMutation } from "@/lib/db/dexie";
-import { getSupabase } from "@/lib/supabase/client";
+import { getCurrentUserId, getSupabase } from "@/lib/supabase/client";
 
 // Principe : toute modification (ex: cocher un article) est écrite
 // IMMÉDIATEMENT en local (réponse instantanée, marche offline), puis
@@ -14,8 +14,12 @@ export async function queueMutation(
   action: PendingMutation["action"],
   payload: PendingMutation["payload"]
 ): Promise<void> {
+  const userId = await getCurrentUserId();
+  if (!userId) return;
+
   await getDb().pendingMutations.add({
     id: crypto.randomUUID(),
+    userId,
     itemId,
     action,
     payload,
@@ -30,7 +34,15 @@ export async function queueMutation(
 }
 
 export async function flushPendingMutations(): Promise<void> {
-  const pending = await getDb().pendingMutations.orderBy("createdAt").toArray();
+  const userId = await getCurrentUserId();
+  if (!userId) return;
+
+  const pending = await getDb()
+    .pendingMutations.where("userId")
+    .equals(userId)
+    .toArray();
+
+  pending.sort((a, b) => a.createdAt.localeCompare(b.createdAt));
 
   for (const mutation of pending) {
     try {
@@ -42,12 +54,16 @@ export async function flushPendingMutations(): Promise<void> {
           break;
         }
 
+        const userId = await getCurrentUserId();
+        if (!userId) break;
+
         const { error } = await supabase
           .from("shopping_list_items")
           .update({
             is_checked: mutation.payload.isChecked,
             updated_at: new Date().toISOString(),
           } as never)
+          .eq("user_id", userId)
           .eq("id", mutation.itemId);
 
         if (error) throw error;

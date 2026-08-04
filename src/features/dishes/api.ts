@@ -1,5 +1,5 @@
 import type { PostgrestError } from "@supabase/supabase-js";
-import { getSupabase } from "@/lib/supabase/client";
+import { getCurrentUserId, getSupabase } from "@/lib/supabase/client";
 import {
   fetchDemoDishes,
   fetchDemoIngredients,
@@ -51,9 +51,13 @@ export async function fetchDishes(): Promise<Dish[]> {
   const supabase = getSupabase();
   if (!supabase) return [];
 
+  const userId = await getCurrentUserId();
+  if (!userId) return [];
+
   const { data, error } = (await supabase
     .from("dishes")
     .select("id, name, description")
+    .eq("user_id", userId)
     .order("name")) as Result<DishRow>;
 
   if (error || !data) {
@@ -87,9 +91,13 @@ export async function fetchIngredients(): Promise<string[]> {
   const supabase = getSupabase();
   if (!supabase) return [];
 
+  const userId = await getCurrentUserId();
+  if (!userId) return [];
+
   const { data, error } = (await supabase
     .from("ingredients")
     .select("name")
+    .eq("user_id", userId)
     .order("name")) as Result<{ name: string }>;
 
   if (error || !data) {
@@ -103,12 +111,15 @@ async function upsertIngredient(name: string): Promise<string | null> {
   const supabase = getSupabase();
   if (!supabase) return null;
 
-  // Upsert silencieux : même nom => même ligne (index unique sur name).
+  const userId = await getCurrentUserId();
+  if (!userId) return null;
+
+  // Upsert silencieux : même nom => même ligne (index unique sur user_id + name).
   const { data, error } = (await supabase
     .from("ingredients")
     .upsert(
-      { name, default_unit: "" } as never,
-      { onConflict: "name" } as never
+      { user_id: userId, name, default_unit: "" } as never,
+      { onConflict: "user_id,name" } as never
     )
     .select("id")) as Result<{ id: string }>;
 
@@ -129,11 +140,15 @@ export async function saveDish(
   const supabase = getSupabase();
   if (!supabase) return null;
 
+  const userId = await getCurrentUserId();
+  if (!userId) return null;
+
   const savedResult = (await supabase
     .from("dishes")
     .upsert(
       {
         id: dish.id,
+        user_id: userId,
         name: dish.name.trim(),
         description: dish.description?.trim() || null,
       } as never,

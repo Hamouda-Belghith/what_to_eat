@@ -23,3 +23,20 @@ export function getSupabase(): Supabase | null {
   cachedClient = createClient<Database>(url, anonKey);
   return cachedClient;
 }
+
+export async function getCurrentUserId(): Promise<string | null> {
+  const supabase = getSupabase();
+  if (!supabase) return null;
+
+  const {
+    data: { user },
+    error,
+  } = await supabase.auth.getUser();
+
+  if (error) {
+    console.warn("Impossible de récupérer l'utilisateur Supabase", error);
+    return null;
+  }
+
+  return user?.id ?? null;
+}

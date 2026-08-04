@@ -444,6 +444,7 @@ export async function generateDemoShoppingList(
 
   const rows: Array<{
     id: string;
+    userId: string;
     ingredientId: string;
     ingredientName: string;
     periodStart: string;
@@ -458,6 +459,7 @@ export async function generateDemoShoppingList(
     for (const [unit, quantity] of unitTotals) {
       rows.push({
         id: crypto.randomUUID(),
+        userId: "demo-user",
         ingredientId,
         ingredientName: ingredientMap.get(ingredientId) ?? "",
         periodStart,

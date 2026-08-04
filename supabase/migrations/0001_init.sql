@@ -7,14 +7,17 @@ create type meal_slot_type as enum ('breakfast', 'lunch', 'dinner');
 -- Ingrédients : référentiel unique, réutilisable entre plats
 create table ingredients (
   id uuid primary key default gen_random_uuid(),
-  name text not null unique,
+  user_id uuid null,
+  name text not null,
   default_unit text not null,
-  created_at timestamptz not null default now()
+  created_at timestamptz not null default now(),
+  unique (user_id, name)
 );
 
 -- Plats
 create table dishes (
   id uuid primary key default gen_random_uuid(),
+  user_id uuid not null,
   name text not null,
   description text,
   created_at timestamptz not null default now()
@@ -33,6 +36,7 @@ create table dish_ingredients (
 -- Cycles de repas (ex: "cycle 2 semaines")
 create table meal_cycles (
   id uuid primary key default gen_random_uuid(),
+  user_id uuid not null,
   name text not null,
   duration_days integer not null,
   start_date date not null,
@@ -52,17 +56,19 @@ create table meal_cycle_entries (
 -- Planning réel (jour calendaire précis, permet override ponctuel sans casser le cycle)
 create table planned_meals (
   id uuid primary key default gen_random_uuid(),
+  user_id uuid not null,
   date date not null,
   meal_slot meal_slot_type not null,
   dish_id uuid not null references dishes(id) on delete restrict,
   meal_cycle_id uuid references meal_cycles(id) on delete set null,
   created_at timestamptz not null default now(),
-  unique (date, meal_slot)
+  unique (user_id, date, meal_slot)
 );
 
 -- Statut d'achat des ingrédients (coché ou non lors des courses)
 create table shopping_list_items (
   id uuid primary key default gen_random_uuid(),
+  user_id uuid not null,
   ingredient_id uuid not null references ingredients(id) on delete restrict,
   period_start date not null,
   period_end date not null,
@@ -70,7 +76,7 @@ create table shopping_list_items (
   unit text not null,
   is_checked boolean not null default false,
   updated_at timestamptz not null default now(),
-  unique (ingredient_id, period_start, period_end)
+  unique (user_id, ingredient_id, period_start, period_end)
 );
 
 -- RLS : activé sur toutes les tables. Vu qu'il n'y a que 2 utilisateurs

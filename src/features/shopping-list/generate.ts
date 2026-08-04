@@ -1,5 +1,5 @@
 import type { PostgrestError } from "@supabase/supabase-js";
-import { getSupabase } from "@/lib/supabase/client";
+import { getCurrentUserId, getSupabase } from "@/lib/supabase/client";
 import { fetchPlannedMeals } from "@/features/planning/api";
 import { addDays, toISODate } from "@/lib/date";
 import { refreshShoppingList } from "./useShoppingList";
@@ -37,6 +37,9 @@ export async function generateShoppingList(
   if (!supabase) {
     throw new Error("Supabase n'est pas configuré");
   }
+
+  const userId = await getCurrentUserId();
+  if (!userId) throw new Error("Utilisateur non connecté");
 
   const planned = await fetchPlannedMeals(periodStart, periodEnd);
   if (planned.length === 0) {
@@ -89,6 +92,7 @@ export async function generateShoppingList(
   const { error: delError } = (await supabase
     .from("shopping_list_items")
     .delete()
+    .eq("user_id", userId)
     .eq("period_start", periodStart)
     .eq("period_end", periodEnd)) as MutateResult;
 
@@ -98,6 +102,7 @@ export async function generateShoppingList(
   }
 
   const rows: Array<{
+    user_id: string;
     ingredient_id: string;
     period_start: string;
     period_end: string;
@@ -108,6 +113,7 @@ export async function generateShoppingList(
   for (const [ingredientId, agg] of totals) {
     for (const [unit, quantity] of agg.quantities) {
       rows.push({
+        user_id: userId,
         ingredient_id: ingredientId,
         period_start: periodStart,
         period_end: periodEnd,

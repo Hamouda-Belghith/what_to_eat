@@ -1,5 +1,5 @@
 import type { PostgrestError } from "@supabase/supabase-js";
-import { getSupabase } from "@/lib/supabase/client";
+import { getCurrentUserId, getSupabase } from "@/lib/supabase/client";
 import {
   fetchDemoDishesForCycles,
   fetchDemoMealCycles,
@@ -68,9 +68,13 @@ export async function fetchMealCycles(): Promise<MealCycle[]> {
   const supabase = getSupabase();
   if (!supabase) return [];
 
+  const userId = await getCurrentUserId();
+  if (!userId) return [];
+
   const { data: cycles, error } = (await supabase
     .from("meal_cycles")
     .select("id, name, duration_days, start_date")
+    .eq("user_id", userId)
     .order("created_at")) as {
     data: CycleRow[] | null;
     error: PostgrestError | null;
@@ -164,11 +168,15 @@ export async function saveMealCycle(cycle: {
     }
   }
 
+  const userId = await getCurrentUserId();
+  if (!userId) return null;
+
   const { data: savedRows, error: cycleError } = (await supabase
     .from("meal_cycles")
     .upsert(
       {
         id: cycle.id,
+        user_id: userId,
         name: cycle.name.trim(),
         duration_days: Math.max(1, Math.floor(cycle.durationDays)),
         start_date: startDate,

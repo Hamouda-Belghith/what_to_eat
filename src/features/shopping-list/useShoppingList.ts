@@ -1,7 +1,7 @@
 import type { PostgrestError } from "@supabase/supabase-js";
 import { useLiveQuery } from "dexie-react-hooks";
 import { getDb } from "@/lib/db/dexie";
-import { getSupabase } from "@/lib/supabase/client";
+import { getCurrentUserId, getSupabase } from "@/lib/supabase/client";
 import { queueMutation } from "./syncQueue";
 import type { ShoppingListItem } from "./types";
 import { isDemoMode } from "@/lib/localDemo";
@@ -17,10 +17,13 @@ export function useShoppingList(
   periodEnd: string
 ): ShoppingListItem[] | undefined {
   return useLiveQuery(async () => {
+    const userId = await getCurrentUserId();
+    if (!userId) return [];
+
     const items = await getDb()
-      .shoppingListItems.where("periodStart")
-      .equals(periodStart)
-      .and((item) => item.periodEnd === periodEnd)
+      .shoppingListItems.where("userId")
+      .equals(userId)
+      .and((item) => item.periodStart === periodStart && item.periodEnd === periodEnd)
       .toArray();
 
     return items.map(
@@ -41,6 +44,9 @@ export async function toggleItemChecked(
   itemId: string,
   isChecked: boolean
 ): Promise<void> {
+  const userId = await getCurrentUserId();
+  if (!userId) return;
+
   await getDb().shoppingListItems.update(itemId, {
     isChecked,
     updatedAt: new Date().toISOString(),
@@ -61,9 +67,13 @@ export async function removeItem(itemId: string): Promise<void> {
   const supabase = getSupabase();
   if (!supabase || !navigator.onLine) return;
 
+  const userId = await getCurrentUserId();
+  if (!userId) return;
+
   const { error } = (await supabase
     .from("shopping_list_items")
     .delete()
+    .eq("user_id", userId)
     .eq("id", itemId)) as { error: PostgrestError | null };
   if (error) console.warn("Suppression Supabase échouée", error);
 }
@@ -80,9 +90,13 @@ export async function refreshShoppingList(
   const supabase = getSupabase();
   if (!supabase) return;
 
+  const userId = await getCurrentUserId();
+  if (!userId) return;
+
   const { data, error } = (await supabase
     .from("shopping_list_items")
     .select("id, ingredient_id, quantity, unit, is_checked, updated_at, ingredients(name)")
+    .eq("user_id", userId)
     .eq("period_start", periodStart)
     .eq("period_end", periodEnd)) as {
     data: Array<{
@@ -105,6 +119,7 @@ export async function refreshShoppingList(
   await getDb().shoppingListItems.bulkPut(
     data.map((row) => ({
       id: row.id,
+      userId,
       ingredientId: row.ingredient_id,
       ingredientName: row.ingredients?.name ?? "",
       periodStart,

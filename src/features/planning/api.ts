@@ -1,5 +1,5 @@
 import type { PostgrestError } from "@supabase/supabase-js";
-import { getSupabase } from "@/lib/supabase/client";
+import { getCurrentUserId, getSupabase } from "@/lib/supabase/client";
 import {
   fetchDemoMealCycles,
   fetchDemoPlannedMeals,
@@ -39,9 +39,13 @@ export async function fetchPlannedMeals(
   const supabase = getSupabase();
   if (!supabase) return [];
 
+  const userId = await getCurrentUserId();
+  if (!userId) return [];
+
   const { data, error } = (await supabase
     .from("planned_meals")
     .select("id, date, meal_slot, dish_id, meal_cycle_id, dishes(name)")
+    .eq("user_id", userId)
     .gte("date", periodStart)
     .lte("date", periodEnd)) as Result<PlannedMealRow>;
 
@@ -76,14 +80,18 @@ export async function setPlannedMeal(
 
   // Upsert : si un plat est déjà prévu à ce créneau, il est remplacé
   // (contrainte unique (date, meal_slot)).
+  const userId = await getCurrentUserId();
+  if (!userId) return;
+
   const { error } = (await supabase.from("planned_meals").upsert(
     {
+      user_id: userId,
       date,
       meal_slot: mealSlot,
       dish_id: dishId,
       meal_cycle_id: mealCycleId,
     } as never,
-    { onConflict: "date, meal_slot" } as never
+    { onConflict: "user_id, date, meal_slot" } as never
   )) as MutateResult;
 
   if (error) {
@@ -104,9 +112,13 @@ export async function clearPlannedMeal(
   const supabase = getSupabase();
   if (!supabase) return;
 
+  const userId = await getCurrentUserId();
+  if (!userId) return;
+
   const { error } = (await supabase
     .from("planned_meals")
     .delete()
+    .eq("user_id", userId)
     .eq("date", date)
     .eq("meal_slot", mealSlot)) as MutateResult;
 
@@ -183,9 +195,12 @@ export async function applyCycleToRange(
 
   if (inserts.length === 0) return;
 
+  const userId = await getCurrentUserId();
+  if (!userId) return;
+
   const { error } = (await supabase
     .from("planned_meals")
-    .insert(inserts as never)) as MutateResult;
+    .insert(inserts.map((insert) => ({ ...insert, user_id: userId })) as never)) as MutateResult;
 
   if (error) {
     console.warn("Impossible de générer le planning depuis le cycle", error);
