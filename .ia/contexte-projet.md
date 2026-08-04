@@ -49,6 +49,11 @@ accueillir d'autres foyers pour l'instant.
   de gérer plats/cycles/planning et de générer une liste de courses
   persistée localement. C'est un outil de développement et de démonstration
   — pour la production, Supabase reste le backend attendu.
+- La version actuelle est également **déployée sur Vercel**. Pour passer
+  d'un usage local à un usage réel, il faut renseigner les variables
+  `NEXT_PUBLIC_SUPABASE_URL` et `NEXT_PUBLIC_SUPABASE_ANON_KEY` dans
+  Vercel, puis appliquer la migration SQL de `supabase/migrations/0001_init.sql`
+  sur la base Supabase de production.
 
 Ce document décrit le **besoin fonctionnel**. Les choix techniques et
 leurs justifications sont dans `../decisions.md`. Les règles de travail

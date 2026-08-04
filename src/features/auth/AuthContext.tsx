@@ -13,7 +13,9 @@ import { getSupabase } from "@/lib/supabase/client";
 import {
   getLocalSession,
   onLocalAuthStateChange,
+  signOutLocal,
 } from "@/features/auth/localAuth";
+import { flushPendingMutations } from "@/features/shopping-list/syncQueue";
 import { isDemoMode } from "@/lib/localDemo";
 
 type SessionOrLocal = Session | { user: { email: string } };
@@ -59,11 +61,68 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       };
     }
 
-    supabase.auth.getSession().then(({ data }) => {
+    void supabase.auth.getSession().then(({ data }) => {
       if (!active) return;
       setSession(data.session);
       setLoading(false);
     });
+
+    const hasAuthCallback =
+      typeof window !== "undefined" &&
+      (window.location.hash.includes("access_token") ||
+        window.location.hash.includes("refresh_token") ||
+        window.location.search.includes("code=") ||
+        window.location.search.includes("token="));
+
+    if (hasAuthCallback) {
+      const params = new URLSearchParams(window.location.search);
+      const hashParams = new URLSearchParams(window.location.hash.replace(/^#/, ""));
+      const tokenHash = hashParams.get("token_hash") ?? params.get("token_hash");
+      const type = hashParams.get("type") ?? params.get("type");
+      const code = params.get("code");
+
+      const finalizeAuth = async () => {
+        if (!active) return;
+
+        try {
+          if (tokenHash && type) {
+            const { data, error } = await supabase.auth.verifyOtp({
+              token_hash: tokenHash,
+              type: type as "email" | "magiclink" | "recovery" | "invite" | "signup" | "email_change",
+            });
+
+            if (error) {
+              console.error("Auth callback error", error);
+              return;
+            }
+
+            if (data.session) {
+              setSession(data.session);
+              void flushPendingMutations();
+            }
+          } else if (code) {
+            const { data, error } = await supabase.auth.exchangeCodeForSession(code);
+
+            if (error) {
+              console.error("Auth callback error", error);
+              return;
+            }
+
+            if (data.session) {
+              setSession(data.session);
+              void flushPendingMutations();
+            }
+          }
+        } finally {
+          if (typeof window !== "undefined") {
+            const cleanUrl = window.location.pathname + window.location.search;
+            window.history.replaceState({}, "", cleanUrl);
+          }
+        }
+      };
+
+      void finalizeAuth();
+    }
 
     const {
       data: { subscription },
@@ -75,9 +134,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       // offline restées en attente : l'utilisateur est maintenant
       // authentifié et peut écrire côté Supabase.
       if (newSession) {
-        void import("@/features/shopping-list/syncQueue").then(
-          ({ flushPendingMutations }) => flushPendingMutations()
-        );
+        void flushPendingMutations();
       }
     });
 
@@ -100,7 +157,6 @@ export function useSignOut(): () => Promise<void> {
     if (supabase && !isDemoMode()) {
       await supabase.auth.signOut();
     } else {
-      const { signOutLocal } = await import("@/features/auth/localAuth");
       await signOutLocal();
     }
   }, []);

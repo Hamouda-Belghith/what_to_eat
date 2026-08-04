@@ -1,15 +1,25 @@
 # État actuel du projet (résumé rapide)
 
-Date: 2026-08-03
+Date: 2026-08-04
 
 Résumé:
 - L'application compile et le build Next.js fonctionne (`npm run build`).
-- Le serveur de développement démarre et sert l'app sur `http://localhost:3000`.
-- Un **mode démo local** a été ajouté pour permettre l'exécution sans
-  configuration Supabase. Dans ce mode:
+- Le frontend a été **déployé sur Vercel** avec une URL de production.
+- Un **mode démo local** reste disponible si les variables Supabase ne sont
+  pas définies. Dans ce mode :
   - Les comptes locaux sont gérés via `src/features/auth/localAuth.ts` (localStorage).
   - Les données de démonstration et les helpers se trouvent dans `src/lib/localDemo.ts`.
   - La liste de courses continue d'utiliser Dexie (`src/lib/db/dexie.ts`) comme source locale.
+
+État de la production :
+- Le frontend Vercel est prêt, mais la version “réelle” n'est pas encore
+  complètement fonctionnelle tant que les variables suivantes ne sont pas
+  renseignées dans Vercel : `NEXT_PUBLIC_SUPABASE_URL` et
+  `NEXT_PUBLIC_SUPABASE_ANON_KEY`.
+- La migration SQL de `supabase/migrations/0001_init.sql` doit être exécutée
+  dans la base Supabase de production pour créer les tables et policies RLS.
+- L'authentification email Supabase doit être vérifiée si les utilisateurs
+  doivent créer des comptes depuis la version déployée.
 
 Problèmes connus:
 - Icônes manquantes: `/icons/icon-192.png` peut renvoyer 404 si les
@@ -32,9 +42,8 @@ npm run build
 ```
 
 Notes d'utilisation:
-- Si vous voulez tester avec Supabase, créez un `.env.local` à la racine
-  du projet et renseignez `NEXT_PUBLIC_SUPABASE_URL` et
-  `NEXT_PUBLIC_SUPABASE_ANON_KEY` puis relancez le serveur.
+- Pour tester avec Supabase, créez un `.env.local` à la racine du projet et
+  renseignez `NEXT_PUBLIC_SUPABASE_URL` et `NEXT_PUBLIC_SUPABASE_ANON_KEY`.
 - En l'absence de ces variables, l'application bascule automatiquement en
   mode demo.
 

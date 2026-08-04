@@ -19,6 +19,20 @@ Note: pour le développement local, l'application propose un mode
 et `features/auth/localAuth.ts` pour les détails d'implémentation.
 ```
 
+## Déploiement actuel (2026-08-04)
+
+- Le frontend est déployé sur Vercel et accessible via une URL de
+  production.
+- La production attend un projet Supabase configuré avec deux variables
+  d'environnement côté Vercel : `NEXT_PUBLIC_SUPABASE_URL` et
+  `NEXT_PUBLIC_SUPABASE_ANON_KEY`.
+- Le schéma SQL de la base est défini dans `supabase/migrations/0001_init.sql`.
+  Il doit être exécuté dans l'instance Supabase utilisée en production pour
+  créer les tables, types et policies RLS.
+- Le fichier `.env` du dépôt peut contenir des secrets de développement,
+  mais les variables frontend doivent rester définies dans Vercel et non
+  dans le code source du repo.
+
 ## Pourquoi ces choix (résumé — détails dans decisions.md)
 
 - **Next.js + TypeScript** : base solide, statiquement typée, seule

@@ -145,6 +145,31 @@ du jour 5) sans modifier le cycle pour les semaines suivantes.
 
 ---
 
+## 2026-08-04 — Déploiement production Vercel + Supabase
+
+**Contexte** : l'application avait atteint un état utilisable localement,
+mais pour une vraie utilisation en production il fallait connecter le
+frontend Vercel à un projet Supabase réel.
+
+**Décision** : maintenir l'architecture actuelle avec un frontend Next.js
+hébergé sur Vercel et un backend Supabase (Postgres + Auth) connecté via
+les variables d'environnement `NEXT_PUBLIC_SUPABASE_URL` et
+`NEXT_PUBLIC_SUPABASE_ANON_KEY`.
+
+**Impacts** :
+- Le frontend Vercel doit recevoir les valeurs Supabase via ses variables
+  d'environnement de production.
+- La migration SQL de `supabase/migrations/0001_init.sql` doit être
+  appliquée sur la base Supabase utilisée par l'application.
+- Le mot de passe de base de données présent dans `.env` est un secret de
+  connexion DB, mais il n'est pas la clé publique attendue par le frontend.
+
+**Pourquoi** : cette combinaison conserve un coût nul ou très faible,
+permet un déploiement simple et reste compatible avec le mode démo
+local en cas d'absence de configuration Supabase.
+
+---
+
 ## 2026-08-03 — Mode démo local lorsque Supabase est absent
 
 **Contexte** : en développement local il était gênant d'obliger la

@@ -46,6 +46,16 @@ Agir comme un développeur senior full-stack et architecte logiciel.
   ne sont pas fournies. Dans ce cas, l'application fonctionne entièrement
   en local (données stockées côté client) pour faciliter le développement
   et les démonstrations sans Supabase.
+- La version actuelle a été **déployée sur Vercel**. Le frontend est
+  accessible publiquement, mais la production réelle nécessite encore :
+  - les variables `NEXT_PUBLIC_SUPABASE_URL` et `NEXT_PUBLIC_SUPABASE_ANON_KEY`
+    dans Vercel,
+  - l'application de la migration SQL de `supabase/migrations/0001_init.sql`
+    sur le projet Supabase utilisé en production,
+  - l'activation de l'authentification email dans Supabase si nécessaire.
+- Le mot de passe de base de données présent dans `.env` n'est pas la
+  valeur à fournir à Vercel pour `NEXT_PUBLIC_SUPABASE_ANON_KEY`.
+  Il sert à l'accès direct à la base, pas au client frontend.
 - Le fallback est volontairement limité : il vise à rendre l'app utilisable
   localement (création de comptes locaux, gestion des plats, cycles,
   planning et génération de liste). Les décisions structurantes liées à
