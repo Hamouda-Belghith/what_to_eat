@@ -1,5 +1,5 @@
-import { CyclesScreen } from "@/features/cycles/CyclesScreen";
+import { redirect } from "next/navigation";
 
 export default function CyclesPage() {
-  return <CyclesScreen />;
+  redirect("/");
 }

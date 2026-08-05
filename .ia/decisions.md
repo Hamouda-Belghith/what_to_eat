@@ -6,6 +6,30 @@ haut du fichier (ordre antéchronologique).
 
 ---
 
+## 2026-08-05 — Répétition depuis le Planning (plus d'onglet Cycles)
+
+**Contexte** : l'onglet Cycles forçait à créer une ressource séparée
+puis à l'appliquer au planning — incohérent avec l'intention « cette
+semaine se répète ».
+
+**Décision** :
+- Supprimer l'onglet / UI Cycles.
+- Un seul motif de répétition par utilisateur (`meal_cycles.user_id`
+  unique), piloté depuis le Planning : Non / Chaque semaine / Toutes
+  les 2 semaines.
+- Activer = snapshot de la semaine visible (ou semaine + suivante si
+  2 semaines) vers le motif, puis matérialisation des cases vides.
+- À l'édition d'un créneau : demander « cette semaine seulement »
+  (override, `meal_cycle_id` null) ou « toutes les semaines futures »
+  (met à jour le motif + occurrences liées).
+
+**Alternatives écartées** : garder plusieurs cycles nommés ; motifs
+parallèles — trop complexes pour 2 utilisateurs.
+
+**Migration** : `supabase/migrations/0003_single_repeat_pattern.sql`.
+
+---
+
 ## 2026-08-02 — Distinction des repas de la journée
 
 **Contexte** : fallait-il distinguer petit-déjeuner / déjeuner / dîner

@@ -1,23 +1,23 @@
 # État actuel du projet (résumé rapide)
 
-Date: 2026-08-04
+Date: 2026-08-05
 
 Résumé:
 - L'application compile et le build Next.js fonctionne (`npm run build`).
 - Le frontend a été **déployé sur Vercel** avec une URL de production.
 - Un **mode démo local** reste disponible si les variables Supabase ne sont
-  pas définies. Dans ce mode :
-  - Les comptes locaux sont gérés via `src/features/auth/localAuth.ts` (localStorage).
-  - Les données de démonstration et les helpers se trouvent dans `src/lib/localDemo.ts`.
-  - La liste de courses continue d'utiliser Dexie (`src/lib/db/dexie.ts`) comme source locale.
+  pas définies.
+- **Plus d'onglet Cycles** : la répétition est un paramètre du Planning
+  (chaque semaine / toutes les 2 semaines). Voir `decisions.md`.
 
 État de la production :
 - Le frontend Vercel est prêt, mais la version “réelle” n'est pas encore
   complètement fonctionnelle tant que les variables suivantes ne sont pas
   renseignées dans Vercel : `NEXT_PUBLIC_SUPABASE_URL` et
   `NEXT_PUBLIC_SUPABASE_ANON_KEY`.
-- La migration SQL de `supabase/migrations/0001_init.sql` doit être exécutée
-  dans la base Supabase de production pour créer les tables et policies RLS.
+- Appliquer les migrations SQL (`0001_init.sql`, et le cas échéant
+  `0002_user_scoping.sql`, `0003_single_repeat_pattern.sql`) sur la base
+  Supabase de production.
 - L'authentification email Supabase doit être vérifiée si les utilisateurs
   doivent créer des comptes depuis la version déployée.
 
@@ -48,7 +48,8 @@ Notes d'utilisation:
   mode demo.
 
 Fichiers importants à consulter pour l'état actuel:
+- `src/features/planning/repeat.ts` — répétition depuis le Planning
 - `src/lib/localDemo.ts` — backend demo local et `isDemoMode()`
 - `src/features/auth/localAuth.ts` — stockage local des comptes et session
 - `src/features/shopping-list/syncQueue.ts` — file de synchronisation
-- `supabase/migrations/0001_init.sql` — schéma de données référentiel
+- `supabase/migrations/` — schéma de données référentiel

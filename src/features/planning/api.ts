@@ -8,9 +8,9 @@ import {
   applyDemoCycleToRange,
   isDemoMode,
 } from "@/lib/localDemo";
-import { fetchMealCycles } from "@/features/cycles/api";
 import { addDays, parseISODate, toISODate } from "@/lib/date";
 import type { MealSlot } from "@/lib/supabase/database.types";
+import type { MealCycle } from "@/features/cycles/types";
 import type { PlannedMeal } from "./types";
 
 type Result<T> = { data: T[] | null; error: PostgrestError | null };
@@ -23,6 +23,19 @@ interface PlannedMealRow {
   dish_id: string;
   meal_cycle_id: string | null;
   dishes?: { name: string } | null;
+}
+
+interface CycleRow {
+  id: string;
+  name: string;
+  duration_days: number;
+  start_date: string;
+}
+
+interface EntryRow {
+  day_offset: number;
+  meal_slot: MealSlot;
+  dish_id: string;
 }
 
 /**
@@ -78,8 +91,6 @@ export async function setPlannedMeal(
   const supabase = getSupabase();
   if (!supabase) return;
 
-  // Upsert : si un plat est déjà prévu à ce créneau, il est remplacé
-  // (contrainte unique (date, meal_slot)).
   const userId = await getCurrentUserId();
   if (!userId) return;
 
@@ -128,9 +139,47 @@ export async function clearPlannedMeal(
   }
 }
 
+async function fetchPatternById(cycleId: string): Promise<MealCycle | null> {
+  if (isDemoMode()) {
+    const cycles = await fetchDemoMealCycles();
+    return cycles.find((c) => c.id === cycleId) ?? null;
+  }
+
+  const supabase = getSupabase();
+  if (!supabase) return null;
+
+  const { data: cycles, error } = (await supabase
+    .from("meal_cycles")
+    .select("id, name, duration_days, start_date")
+    .eq("id", cycleId)
+    .limit(1)) as Result<CycleRow>;
+
+  if (error || !cycles?.[0]) return null;
+
+  const cycle = cycles[0];
+  const { data: entries, error: entriesError } = (await supabase
+    .from("meal_cycle_entries")
+    .select("day_offset, meal_slot, dish_id")
+    .eq("meal_cycle_id", cycle.id)) as Result<EntryRow>;
+
+  if (entriesError || !entries) return null;
+
+  return {
+    id: cycle.id,
+    name: cycle.name,
+    durationDays: cycle.duration_days,
+    startDate: cycle.start_date,
+    entries: entries.map((e) => ({
+      dayOffset: e.day_offset,
+      mealSlot: e.meal_slot,
+      dishId: e.dish_id,
+    })),
+  };
+}
+
 /**
- * Génère les repas d'un cycle sur une plage de dates. Les cases déjà
- * remplies (override manuel) ne sont pas écrasées.
+ * Remplit les cases vides d'une plage depuis un motif de répétition.
+ * Les overrides manuels (cases déjà remplies) ne sont pas écrasés.
  */
 export async function applyCycleToRange(
   cycleId: string,
@@ -145,9 +194,8 @@ export async function applyCycleToRange(
   const supabase = getSupabase();
   if (!supabase) return;
 
-  const cycles = await fetchMealCycles();
-  const cycle = cycles.find((c) => c.id === cycleId);
-  if (!cycle) throw new Error("Cycle introuvable");
+  const cycle = await fetchPatternById(cycleId);
+  if (!cycle) throw new Error("Motif de répétition introuvable");
 
   const existing = await fetchPlannedMeals(periodStart, periodEnd);
   const existingKeys = new Set(
@@ -172,8 +220,11 @@ export async function applyCycleToRange(
   let cursor = new Date(startDate);
 
   while (cursor <= endDate) {
-    const diffDays = Math.round((cursor.getTime() - cycleStart.getTime()) / msPerDay);
-    const cycleOffset = ((diffDays % cycle.durationDays) + cycle.durationDays) % cycle.durationDays;
+    const diffDays = Math.round(
+      (cursor.getTime() - cycleStart.getTime()) / msPerDay
+    );
+    const cycleOffset =
+      ((diffDays % cycle.durationDays) + cycle.durationDays) % cycle.durationDays;
     const dateStr = toISODate(cursor);
 
     for (const slot of ["breakfast", "lunch", "dinner"] as MealSlot[]) {
@@ -200,10 +251,12 @@ export async function applyCycleToRange(
 
   const { error } = (await supabase
     .from("planned_meals")
-    .insert(inserts.map((insert) => ({ ...insert, user_id: userId })) as never)) as MutateResult;
+    .insert(
+      inserts.map((insert) => ({ ...insert, user_id: userId })) as never
+    )) as MutateResult;
 
   if (error) {
-    console.warn("Impossible de générer le planning depuis le cycle", error);
-    throw new Error("Génération du planning impossible");
+    console.warn("Impossible d'appliquer le motif au planning", error);
+    throw new Error("Application du motif impossible");
   }
 }

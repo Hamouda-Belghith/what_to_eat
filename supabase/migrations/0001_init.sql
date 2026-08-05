@@ -35,10 +35,11 @@ create table dish_ingredients (
   unique (dish_id, ingredient_id)
 );
 
--- Cycles de repas (ex: "cycle 2 semaines")
+-- Motif de répétition du planning (au plus un par utilisateur).
+-- Piloté depuis le Planning : répétition chaque semaine ou toutes les 2 semaines.
 create table meal_cycles (
   id uuid primary key default gen_random_uuid(),
-  user_id uuid not null,
+  user_id uuid not null unique,
   name text not null,
   duration_days integer not null,
   start_date date not null,

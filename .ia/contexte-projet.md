@@ -19,8 +19,11 @@ accueillir d'autres foyers pour l'instant.
 
 - Créer un planning de repas pour chaque jour, avec distinction entre
   petit-déjeuner, déjeuner et dîner.
-- Créer des cycles de repas personnalisés (1 semaine, 2 semaines ou
-  plus) qui se répètent automatiquement.
+- Rendre une semaine (ou une quinzaine) répétitive depuis le Planning :
+  « chaque semaine » ou « toutes les 2 semaines ». Pas d'onglet ni de
+  ressource « Cycles » séparée — la répétition est un paramètre du
+  planning. Lors d'une modification, choisir entre cette semaine
+  seulement ou toutes les semaines futures.
 - Associer une liste d'ingrédients à chaque plat. Les ingrédients sont
   saisis manuellement une fois par plat et réutilisés ensuite — pas
   d'intégration avec une API de supermarché.
@@ -46,7 +49,7 @@ accueillir d'autres foyers pour l'instant.
   : un backend local de démonstration est automatiquement utilisé lorsque
   `NEXT_PUBLIC_SUPABASE_URL` ou `NEXT_PUBLIC_SUPABASE_ANON_KEY` sont absents.
 - Ce mode permet de créer des comptes locaux (stockés en `localStorage`),
-  de gérer plats/cycles/planning et de générer une liste de courses
+  de gérer plats/planning (avec répétition) et de générer une liste de courses
   persistée localement. C'est un outil de développement et de démonstration
   — pour la production, Supabase reste le backend attendu.
 - La version actuelle est également **déployée sur Vercel**. Pour passer

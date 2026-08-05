@@ -13,19 +13,21 @@ import {
 } from "@/lib/date";
 import type { MealSlot } from "@/lib/supabase/database.types";
 import type { Dish } from "@/features/dishes/types";
-import type { MealCycle } from "@/features/cycles/types";
 import {
   fetchDishesForCycles,
-  fetchMealCycles,
   MEAL_SLOTS,
   MEAL_SLOT_LABELS,
 } from "@/features/cycles/api";
+import { fetchPlannedMeals } from "./api";
 import {
-  applyCycleToRange,
-  clearPlannedMeal,
-  fetchPlannedMeals,
-  setPlannedMeal,
-} from "./api";
+  ensurePatternApplied,
+  getRepeatConfig,
+  setMealWithScope,
+  setRepeatInterval,
+  type MealEditScope,
+  type RepeatConfig,
+  type RepeatInterval,
+} from "./repeat";
 import type { PlannedMeal } from "./types";
 
 const WEEK_DAYS = 7;
@@ -38,36 +40,40 @@ export function PlanningScreen() {
 
   const [meals, setMeals] = useState<PlannedMeal[] | null>(null);
   const [dishes, setDishes] = useState<Dish[]>([]);
-  const [cycles, setCycles] = useState<MealCycle[]>([]);
+  const [repeat, setRepeat] = useState<RepeatConfig | null>(null);
   const [error, setError] = useState<string | null>(null);
-
-  const [generating, setGenerating] = useState(false);
-  const [selectedCycleId, setSelectedCycleId] = useState("");
-  const [actionError, setActionError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
 
-  // Cellule de planning cliquée → modale de choix du plat
   const [editingCell, setEditingCell] = useState<{
     date: string;
     mealSlot: MealSlot;
+  } | null>(null);
+
+  const [pendingEdit, setPendingEdit] = useState<{
+    date: string;
+    mealSlot: MealSlot;
+    dishId: string | null;
   } | null>(null);
 
   const weekStartISO = toISODate(weekStart);
   const weekEndISO = toISODate(addDays(weekStart, WEEK_DAYS - 1));
 
   async function loadMeals() {
-    const [mealRows, dishRows, cycleRows] = await Promise.all([
+    await ensurePatternApplied(weekStartISO, weekEndISO);
+    const [mealRows, dishRows, repeatConfig] = await Promise.all([
       fetchPlannedMeals(weekStartISO, weekEndISO),
       fetchDishesForCycles(),
-      fetchMealCycles(),
+      getRepeatConfig(),
     ]);
     setMeals(mealRows);
     setDishes(dishRows);
-    setCycles(cycleRows);
+    setRepeat(repeatConfig);
   }
 
   useEffect(() => {
-    loadMeals();
+    void loadMeals().catch((err) => {
+      setError(err instanceof Error ? err.message : "Chargement impossible");
+    });
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [weekStartISO]);
 
@@ -83,24 +89,66 @@ export function PlanningScreen() {
     setWeekStart(startOfWeek(new Date()));
   }
 
-  async function handleCellClick(date: string, mealSlot: MealSlot) {
+  async function handleRepeatChange(value: string) {
+    setBusy(true);
+    setError(null);
+    try {
+      const interval: RepeatInterval | null =
+        value === "1" ? 1 : value === "2" ? 2 : null;
+      const config = await setRepeatInterval(interval, weekStartISO);
+      setRepeat(config);
+      await loadMeals();
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Répétition impossible");
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  async function handleResyncPattern() {
+    if (!repeat?.intervalWeeks) return;
+    setBusy(true);
+    setError(null);
+    try {
+      const config = await setRepeatInterval(repeat.intervalWeeks, weekStartISO);
+      setRepeat(config);
+      await loadMeals();
+    } catch (err) {
+      setError(
+        err instanceof Error ? err.message : "Mise à jour du motif impossible"
+      );
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  function handleCellClick(date: string, mealSlot: MealSlot) {
     setEditingCell({ date, mealSlot });
   }
 
-  async function handlePickDish(dishId: string | null) {
+  function handlePickDish(dishId: string | null) {
     if (!editingCell) return;
     const { date, mealSlot } = editingCell;
     setEditingCell(null);
+
+    if (repeat?.active) {
+      setPendingEdit({ date, mealSlot, dishId });
+      return;
+    }
+
+    void applyEdit(date, mealSlot, dishId, null);
+  }
+
+  async function applyEdit(
+    date: string,
+    mealSlot: MealSlot,
+    dishId: string | null,
+    scope: MealEditScope | null
+  ) {
     setBusy(true);
+    setError(null);
     try {
-      if (dishId === null) {
-        await clearPlannedMeal(date, mealSlot);
-      } else {
-        const existing = meals?.find(
-          (m) => m.date === date && m.mealSlot === mealSlot
-        );
-        await setPlannedMeal(date, mealSlot, dishId, existing?.mealCycleId ?? null);
-      }
+      await setMealWithScope(date, mealSlot, dishId, scope);
       await loadMeals();
     } catch (err) {
       setError(err instanceof Error ? err.message : "Action impossible");
@@ -109,19 +157,11 @@ export function PlanningScreen() {
     }
   }
 
-  async function handleGenerate(cycleId: string) {
-    setActionError(null);
-    setBusy(true);
-    try {
-      await applyCycleToRange(cycleId, weekStartISO, weekEndISO);
-      await loadMeals();
-      setGenerating(false);
-      setSelectedCycleId("");
-    } catch (err) {
-      setActionError(err instanceof Error ? err.message : "Génération impossible");
-    } finally {
-      setBusy(false);
-    }
+  async function handleScopeChoice(scope: MealEditScope) {
+    if (!pendingEdit) return;
+    const { date, mealSlot, dishId } = pendingEdit;
+    setPendingEdit(null);
+    await applyEdit(date, mealSlot, dishId, scope);
   }
 
   const editingMeal = editingCell
@@ -129,6 +169,10 @@ export function PlanningScreen() {
         (m) => m.date === editingCell.date && m.mealSlot === editingCell.mealSlot
       )
     : undefined;
+
+  const repeatSelectValue = repeat?.intervalWeeks
+    ? String(repeat.intervalWeeks)
+    : "";
 
   return (
     <div className="screen">
@@ -149,15 +193,41 @@ export function PlanningScreen() {
           <Button variant="ghost" onClick={nextWeek} aria-label="Semaine suivante">
             →
           </Button>
-          <Button
-            variant="primary"
-            onClick={() => setGenerating(true)}
-            disabled={cycles.length === 0}
-            title={cycles.length === 0 ? "Crée d'abord un cycle" : undefined}
-          >
-            Générer un cycle
-          </Button>
         </div>
+      </div>
+
+      <div className="card" style={{ marginBottom: "0.75rem" }}>
+        <div className="row" style={{ alignItems: "flex-end", flexWrap: "wrap" }}>
+          <div className="field" style={{ marginBottom: 0, minWidth: "12rem" }}>
+            <label htmlFor="repeat-select">Répéter cette semaine</label>
+            <select
+              id="repeat-select"
+              className="select"
+              value={repeatSelectValue}
+              disabled={busy || repeat === null}
+              onChange={(e) => void handleRepeatChange(e.target.value)}
+            >
+              <option value="">Non</option>
+              <option value="1">Chaque semaine</option>
+              <option value="2">Toutes les 2 semaines</option>
+            </select>
+          </div>
+          {repeat?.active ? (
+            <Button
+              variant="ghost"
+              disabled={busy}
+              onClick={() => void handleResyncPattern()}
+              title="Recopie la semaine affichée (et la suivante si 2 semaines) comme nouveau motif"
+            >
+              Mettre à jour le motif
+            </Button>
+          ) : null}
+        </div>
+        {repeat?.active && repeat.intervalWeeks === 2 ? (
+          <p style={{ margin: "0.5rem 0 0", color: "var(--muted)", fontSize: "0.9rem" }}>
+            Le motif couvre cette semaine et la suivante.
+          </p>
+        ) : null}
       </div>
 
       {error ? (
@@ -205,12 +275,13 @@ export function PlanningScreen() {
                       className={`meal-cell ${meal ? "" : "meal-cell-empty"}`}
                       onClick={() => handleCellClick(dateISO, slot)}
                       style={{ textAlign: "left" }}
+                      disabled={busy}
                     >
                       {meal ? (
                         <>
                           <span className="meal-cell-name">{meal.dishName}</span>
                           {meal.mealCycleId ? (
-                            <span className="meal-cell-override">cycle</span>
+                            <span className="meal-cell-override">répété</span>
                           ) : null}
                         </>
                       ) : (
@@ -224,47 +295,6 @@ export function PlanningScreen() {
           })}
         </div>
       )}
-
-      {generating ? (
-        <Modal
-          title="Générer un cycle sur la semaine"
-          onClose={() => setGenerating(false)}
-        >
-          <p style={{ marginTop: 0, color: "var(--muted)" }}>
-            Les repas déjà planifiés ne seront pas écrasés.
-          </p>
-          <div className="field">
-            <label htmlFor="cycle-select">Cycle</label>
-            <select
-              id="cycle-select"
-              className="select"
-              value={selectedCycleId}
-              onChange={(e) => setSelectedCycleId(e.target.value)}
-            >
-              <option value="">— Choisir un cycle —</option>
-              {cycles.map((cycle) => (
-                <option key={cycle.id} value={cycle.id}>
-                  {cycle.name}
-                </option>
-              ))}
-            </select>
-          </div>
-          {actionError ? (
-            <p style={{ color: "var(--danger)", fontWeight: 700 }}>{actionError}</p>
-          ) : null}
-          <div className="row" style={{ justifyContent: "flex-end" }}>
-            <Button variant="ghost" onClick={() => setGenerating(false)}>
-              Annuler
-            </Button>
-            <Button
-              disabled={!selectedCycleId || busy}
-              onClick={() => handleGenerate(selectedCycleId)}
-            >
-              Générer
-            </Button>
-          </div>
-        </Modal>
-      ) : null}
 
       {editingCell ? (
         <Modal
@@ -292,9 +322,38 @@ export function PlanningScreen() {
             ))}
             {dishes.length === 0 ? (
               <p className="empty" style={{ padding: "1rem" }}>
-                Aucun plat. Crée d'abord des plats dans l'onglet « Plats ».
+                Aucun plat. Crée d&apos;abord des plats dans l&apos;onglet « Plats ».
               </p>
             ) : null}
+          </div>
+        </Modal>
+      ) : null}
+
+      {pendingEdit ? (
+        <Modal
+          title="Portée de la modification"
+          onClose={() => setPendingEdit(null)}
+        >
+          <p style={{ marginTop: 0, color: "var(--muted)" }}>
+            Un motif de répétition est actif. Appliquer ce changement à…
+          </p>
+          <div className="stack">
+            <Button
+              variant="primary"
+              disabled={busy}
+              onClick={() => void handleScopeChoice("this_week")}
+            >
+              Cette semaine seulement
+            </Button>
+            <Button
+              disabled={busy}
+              onClick={() => void handleScopeChoice("all_future")}
+            >
+              Toutes les semaines futures
+            </Button>
+            <Button variant="ghost" onClick={() => setPendingEdit(null)}>
+              Annuler
+            </Button>
           </div>
         </Modal>
       ) : null}

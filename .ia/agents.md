@@ -57,9 +57,12 @@ Agir comme un développeur senior full-stack et architecte logiciel.
   valeur à fournir à Vercel pour `NEXT_PUBLIC_SUPABASE_ANON_KEY`.
   Il sert à l'accès direct à la base, pas au client frontend.
 - Le fallback est volontairement limité : il vise à rendre l'app utilisable
-  localement (création de comptes locaux, gestion des plats, cycles,
-  planning et génération de liste). Les décisions structurantes liées à
+  localement (création de comptes locaux, gestion des plats, planning
+  avec répétition et génération de liste). Les décisions structurantes liées à
   Supabase doivent être consignées dans `decisions.md`.
+- **Pas d'onglet Cycles.** La répétition est un paramètre du Planning
+  (chaque semaine / toutes les 2 semaines), avec un seul motif actif.
+  Voir `decisions.md`.
 
 ## En modifiant du code existant
 
@@ -82,8 +85,11 @@ Agir comme un développeur senior full-stack et architecte logiciel.
 - **PWA uniquement**, pas de publication App Store / Play Store pour
   l'instant (voir `decisions.md`).
 - **Offline limité à la liste de courses.** Le reste de l'application
-  (création de plats, cycles, planning) suppose une connexion réseau.
+  (création de plats, planning) suppose une connexion réseau.
   Ne pas étendre l'offline à d'autres écrans sans discussion préalable.
+- **Un seul motif de répétition**, piloté depuis le Planning — pas de
+  ressource / onglet « Cycles » séparé. Ne pas réintroduire des cycles
+  nommés multiples sans discussion.
 - **Stratégie de conflit de synchronisation : dernière écriture gagne.**
   Ne pas introduire de système de résolution de conflit plus complexe
   (CRDT, etc.) sans besoin démontré.

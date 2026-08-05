@@ -7,7 +7,6 @@ import { useSignOut } from "@/features/auth/AuthContext";
 const LINKS = [
   { href: "/", label: "Planning", emoji: "📅" },
   { href: "/plats", label: "Plats", emoji: "🍽️" },
-  { href: "/cycles", label: "Cycles", emoji: "🔁" },
   { href: "/courses", label: "Courses", emoji: "🛒" },
 ];
 

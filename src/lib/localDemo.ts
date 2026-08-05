@@ -214,8 +214,16 @@ export async function fetchDemoDishesForCycles(): Promise<Dish[]> {
 }
 
 export async function fetchDemoMealCycles(): Promise<MealCycle[]> {
+  const pattern = await fetchDemoRepeatPattern();
+  return pattern ? [pattern] : [];
+}
+
+export async function fetchDemoRepeatPattern(): Promise<MealCycle | null> {
   const state = loadState();
-  return state.mealCycles.map((cycle) => ({
+  const cycle = state.mealCycles[0] ?? null;
+  if (!cycle) return null;
+
+  return {
     id: cycle.id,
     name: cycle.name,
     durationDays: cycle.durationDays,
@@ -227,50 +235,46 @@ export async function fetchDemoMealCycles(): Promise<MealCycle[]> {
         mealSlot: entry.mealSlot,
         dishId: entry.dishId,
       })),
-  }));
+  };
 }
 
-export async function deleteDemoMealCycle(id: string): Promise<void> {
+export async function clearDemoRepeatPattern(): Promise<void> {
   const state = loadState();
-  state.mealCycles = state.mealCycles.filter((cycle) => cycle.id !== id);
-  state.mealCycleEntries = state.mealCycleEntries.filter(
-    (entry) => entry.mealCycleId !== id
-  );
+  const ids = new Set(state.mealCycles.map((cycle) => cycle.id));
+  state.mealCycles = [];
+  state.mealCycleEntries = [];
+  for (const meal of state.plannedMeals) {
+    if (meal.mealCycleId && ids.has(meal.mealCycleId)) {
+      meal.mealCycleId = null;
+    }
+  }
   saveState(state);
 }
 
-export async function saveDemoMealCycle(cycle: {
+export async function upsertDemoRepeatPattern(params: {
   id?: string;
-  name: string;
+  startDate: string;
   durationDays: number;
   entries: MealCycleEntry[];
 }): Promise<MealCycle | null> {
   const state = loadState();
-  const cycleId = cycle.id ?? crypto.randomUUID();
-  const trimmedName = cycle.name.trim();
-  if (!trimmedName) return null;
+  // Un seul motif en démo.
+  const existingId = state.mealCycles[0]?.id;
+  const cycleId = params.id ?? existingId ?? crypto.randomUUID();
 
-  const cycleRow: DemoMealCycle = {
-    id: cycleId,
-    name: trimmedName,
-    durationDays: Math.max(1, Math.floor(cycle.durationDays)),
-    startDate: cycle.id ? state.mealCycles.find((c) => c.id === cycleId)?.startDate ?? toISODate(new Date()) : toISODate(new Date()),
-    createdAt: now(),
-  };
+  state.mealCycles = [
+    {
+      id: cycleId,
+      name: "Répétition",
+      durationDays: params.durationDays,
+      startDate: params.startDate,
+      createdAt: now(),
+    },
+  ];
+  state.mealCycleEntries = [];
 
-  const existingIndex = state.mealCycles.findIndex((row) => row.id === cycleId);
-  if (existingIndex >= 0) {
-    state.mealCycles[existingIndex] = { ...state.mealCycles[existingIndex], ...cycleRow };
-  } else {
-    state.mealCycles.push(cycleRow);
-  }
-
-  state.mealCycleEntries = state.mealCycleEntries.filter(
-    (entry) => entry.mealCycleId !== cycleId
-  );
-
-  for (const entry of cycle.entries) {
-    if (entry.dayOffset < 0 || entry.dayOffset >= cycleRow.durationDays) continue;
+  for (const entry of params.entries) {
+    if (entry.dayOffset < 0 || entry.dayOffset >= params.durationDays) continue;
     if (!entry.dishId) continue;
     state.mealCycleEntries.push({
       id: crypto.randomUUID(),
@@ -282,7 +286,134 @@ export async function saveDemoMealCycle(cycle: {
   }
 
   saveState(state);
-  return fetchDemoMealCycles().then((cycles) => cycles.find((c) => c.id === cycleId) ?? null);
+  return fetchDemoRepeatPattern();
+}
+
+export async function updateDemoPatternEntryAndFuture(params: {
+  patternId: string;
+  dayOffset: number;
+  mealSlot: MealSlot;
+  dishId: string | null;
+  fromDate: string;
+}): Promise<void> {
+  const state = loadState();
+  const cycle = state.mealCycles.find((c) => c.id === params.patternId);
+  if (!cycle) throw new Error("Motif de répétition introuvable");
+
+  state.mealCycleEntries = state.mealCycleEntries.filter(
+    (entry) =>
+      !(
+        entry.mealCycleId === params.patternId &&
+        entry.dayOffset === params.dayOffset &&
+        entry.mealSlot === params.mealSlot
+      )
+  );
+
+  if (params.dishId !== null) {
+    state.mealCycleEntries.push({
+      id: crypto.randomUUID(),
+      mealCycleId: params.patternId,
+      dayOffset: params.dayOffset,
+      mealSlot: params.mealSlot,
+      dishId: params.dishId,
+    });
+  }
+
+  const msPerDay = 24 * 60 * 60 * 1000;
+  const cycleStart = new Date(`${cycle.startDate}T00:00:00`);
+
+  const matchesOffset = (dateStr: string): boolean => {
+    const mealDate = new Date(`${dateStr}T00:00:00`);
+    const diffDays = Math.round(
+      (mealDate.getTime() - cycleStart.getTime()) / msPerDay
+    );
+    const offset =
+      ((diffDays % cycle.durationDays) + cycle.durationDays) % cycle.durationDays;
+    return offset === params.dayOffset;
+  };
+
+  // Met à jour ou retire les occurrences futures encore liées au motif.
+  const nextPlanned: DemoPlannedMeal[] = [];
+  for (const meal of state.plannedMeals) {
+    const isFutureLinked =
+      meal.date >= params.fromDate &&
+      meal.mealCycleId === params.patternId &&
+      meal.mealSlot === params.mealSlot &&
+      matchesOffset(meal.date);
+
+    if (!isFutureLinked) {
+      nextPlanned.push(meal);
+      continue;
+    }
+
+    if (params.dishId !== null) {
+      nextPlanned.push({
+        ...meal,
+        dishId: params.dishId,
+        createdAt: now(),
+      });
+    }
+  }
+  state.plannedMeals = nextPlanned;
+
+  // Crée les occurrences futures manquantes (horizon 8 semaines).
+  if (params.dishId !== null) {
+    const from = new Date(`${params.fromDate}T00:00:00`);
+    const end = new Date(from);
+    end.setDate(end.getDate() + 8 * 7 - 1);
+    const existingKeys = new Set(
+      state.plannedMeals.map((meal) => `${meal.date}-${meal.mealSlot}`)
+    );
+
+    let cursor = new Date(from);
+    while (cursor <= end) {
+      const dateStr = toISODate(cursor);
+      if (
+        matchesOffset(dateStr) &&
+        !existingKeys.has(`${dateStr}-${params.mealSlot}`)
+      ) {
+        state.plannedMeals.push({
+          id: crypto.randomUUID(),
+          date: dateStr,
+          mealSlot: params.mealSlot,
+          dishId: params.dishId,
+          mealCycleId: params.patternId,
+          createdAt: now(),
+        });
+        existingKeys.add(`${dateStr}-${params.mealSlot}`);
+      }
+      cursor.setDate(cursor.getDate() + 1);
+    }
+  }
+
+  saveState(state);
+}
+
+export async function deleteDemoMealCycle(id: string): Promise<void> {
+  const state = loadState();
+  state.mealCycles = state.mealCycles.filter((cycle) => cycle.id !== id);
+  state.mealCycleEntries = state.mealCycleEntries.filter(
+    (entry) => entry.mealCycleId !== id
+  );
+  for (const meal of state.plannedMeals) {
+    if (meal.mealCycleId === id) meal.mealCycleId = null;
+  }
+  saveState(state);
+}
+
+export async function saveDemoMealCycle(cycle: {
+  id?: string;
+  name: string;
+  durationDays: number;
+  entries: MealCycleEntry[];
+}): Promise<MealCycle | null> {
+  // Conservé pour compatibilité interne : bascule vers un motif unique.
+  return upsertDemoRepeatPattern({
+    id: cycle.id,
+    startDate: toISODate(new Date()),
+    durationDays: Math.max(1, Math.floor(cycle.durationDays)),
+    entries: cycle.entries,
+  });
 }
 
 export async function fetchDemoPlannedMeals(
@@ -353,7 +484,7 @@ export async function applyDemoCycleToRange(
 ): Promise<void> {
   const state = loadState();
   const cycle = state.mealCycles.find((c) => c.id === cycleId);
-  if (!cycle) throw new Error("Cycle introuvable");
+  if (!cycle) throw new Error("Motif de répétition introuvable");
 
   const existingKeys = new Set(
     state.plannedMeals

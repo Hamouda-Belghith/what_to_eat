@@ -2,9 +2,9 @@
 
 PWA de planification de repas et liste de courses, à usage privé (2
 utilisateurs). Permet de créer des plats avec leurs ingrédients, de
-composer des cycles de repas répétitifs, de générer un planning
-calendaire, et d'obtenir automatiquement la liste de courses agrégée
-correspondante — consultable et modifiable hors-ligne.
+planifier une semaine et de la rendre répétitive (chaque semaine ou
+toutes les 2 semaines), et d'obtenir automatiquement la liste de courses
+agrégée — consultable et modifiable hors-ligne.
 
 ## Pour les contributeurs (humains et IA)
 
@@ -25,9 +25,9 @@ contribution :
 
 - Planning de repas jour par jour, avec distinction petit-déjeuner /
   déjeuner / dîner.
-- Cycles de repas personnalisés (1 semaine, 2 semaines, ou plus) qui se
-  répètent automatiquement, avec possibilité d'override ponctuel un
-  jour donné.
+- Répétition depuis le Planning : chaque semaine ou toutes les 2
+  semaines (un seul motif actif). À l'édition : cette semaine seulement
+  ou toutes les semaines futures.
 - Plats avec liste d'ingrédients saisie une fois et réutilisable (pas
   d'API externe).
 - Génération automatique de la liste de courses agrégée sur une
@@ -105,8 +105,8 @@ avec support offline pour la liste de courses.
     ├── app/                    → routes Next.js (App Router) + service worker
     ├── features/
     │   ├── dishes/             → plats et leurs ingrédients
-    │   ├── cycles/             → cycles de répétition
-    │   ├── planning/           → planning calendaire réel
+    │   ├── cycles/             → constantes repas + types du motif
+    │   ├── planning/           → planning + répétition
     │   └── shopping-list/      → génération + offline de la liste de courses
     └── lib/
         ├── supabase/           → client Supabase + types du schéma
@@ -115,12 +115,10 @@ avec support offline pour la liste de courses.
 
 ## État actuel du projet
 
-Squelette posé :
+Application utilisable (mode démo local ou Supabase) :
 - Config Next.js + PWA (Serwist)
-- Client Supabase typé
-- Schéma de base de données complet (migration SQL)
+- Client Supabase typé + mode démo local
+- Schéma de base de données versionné (migrations SQL)
 - Offline de la liste de courses (Dexie + file de synchronisation)
-- Types des modules (plats, cycles, planning, liste de courses)
+- Écrans Plats, Planning (avec répétition), Courses
 
-Reste à développer : les écrans (UI) pour créer des plats, des cycles,
-générer le planning et afficher la liste de courses.

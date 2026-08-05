@@ -65,15 +65,15 @@ Tables principales :
 | `ingredients`          | Référentiel unique des ingrédients                                |
 | `dishes`               | Plats                                                              |
 | `dish_ingredients`     | Composition d'un plat (ingrédient + quantité + unité)              |
-| `meal_cycles`          | Modèle de cycle répétitif (ex: "cycle 2 semaines")                 |
-| `meal_cycle_entries`   | Position d'un plat dans un cycle (jour relatif + repas)            |
-| `planned_meals`        | Planning réel, calendaire (permet override ponctuel sans casser le cycle) |
+| `meal_cycles`          | Motif unique de répétition (1 ou 2 semaines), piloté depuis le Planning |
+| `meal_cycle_entries`   | Créneaux du motif (jour relatif + repas + plat)                        |
+| `planned_meals`        | Planning calendaire réel (override possible sans casser le motif)      |
 | `shopping_list_items`  | Liste de courses agrégée et persistée, cochable, source de l'offline |
 
-Point clé : `meal_cycle_entries` (le **modèle**) est séparé de
-`planned_meals` (la **réalité calendaire**) pour permettre de générer
-automatiquement le planning depuis un cycle tout en autorisant une
-modification ponctuelle un jour donné sans casser la répétition future.
+Point clé : un seul motif de répétition par utilisateur. `meal_cycle_entries`
+(le **modèle**) est séparé de `planned_meals` (la **réalité calendaire**)
+pour remplir automatiquement les semaines futures tout en autorisant un
+override ponctuel (« cette semaine seulement ») sans casser la répétition.
 
 ## Stratégie offline (liste de courses uniquement)
 
@@ -97,8 +97,8 @@ src/
   app/                    → routes Next.js (App Router) + service worker (sw.ts)
   features/
     dishes/               → plats et leurs ingrédients
-    cycles/                → cycles de répétition
-    planning/             → planning calendaire réel
+    cycles/               → constantes repas + types du motif (plus d'UI dédiée)
+    planning/             → planning + répétition (repeat.ts)
     shopping-list/        → génération + offline de la liste de courses
   lib/
     supabase/             → client Supabase + types générés du schéma
