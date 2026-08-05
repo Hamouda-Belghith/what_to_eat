@@ -37,6 +37,16 @@ export async function flushPendingMutations(): Promise<void> {
   const userId = await getCurrentUserId();
   if (!userId) return;
 
+  const supabase = getSupabase();
+  // Mode démo / sans Supabase : rien à synchroniser, on vide la file.
+  if (!supabase) {
+    await getDb()
+      .pendingMutations.where("userId")
+      .equals(userId)
+      .delete();
+    return;
+  }
+
   const pending = await getDb()
     .pendingMutations.where("userId")
     .equals(userId)
@@ -47,16 +57,6 @@ export async function flushPendingMutations(): Promise<void> {
   for (const mutation of pending) {
     try {
       if (mutation.action === "toggle_checked") {
-        const supabase = getSupabase();
-        if (!supabase) {
-          // Pas de configuration Supabase : on garde les mutations en
-          // attente et on réessaiera plus tard (à l'apparition du réseau).
-          break;
-        }
-
-        const userId = await getCurrentUserId();
-        if (!userId) break;
-
         const { error } = await supabase
           .from("shopping_list_items")
           .update({
@@ -69,11 +69,8 @@ export async function flushPendingMutations(): Promise<void> {
         if (error) throw error;
       }
 
-      // Succès : on retire la mutation de la file.
       await getDb().pendingMutations.delete(mutation.id);
     } catch (err) {
-      // Échec réseau probable : on arrête ici, on réessaiera plus tard.
-      // Les mutations suivantes ne sont pas tentées pour garder l'ordre.
       console.warn("Synchronisation interrompue, nouvelle tentative plus tard", err);
       break;
     }

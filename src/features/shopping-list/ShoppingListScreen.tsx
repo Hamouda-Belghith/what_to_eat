@@ -78,8 +78,14 @@ export function ShoppingListScreen() {
   const items = useShoppingList(periodStart, periodEnd);
   const pendingCount = useLiveQuery(() => getDb().pendingMutations.count(), []);
 
-  const toBuy = items?.filter((i) => !i.isChecked) ?? [];
-  const alreadyHave = items?.filter((i) => i.isChecked) ?? [];
+  const toBuy = useMemo(
+    () => items?.filter((i) => !i.isChecked) ?? [],
+    [items]
+  );
+  const alreadyHave = useMemo(
+    () => items?.filter((i) => i.isChecked) ?? [],
+    [items]
+  );
   const totalCount = items?.length ?? 0;
 
   function applyDuration(nextAmount: number, nextUnit: DurationUnit) {
@@ -128,11 +134,11 @@ export function ShoppingListScreen() {
 
   return (
     <div className="screen">
-      <div className="row-spread" style={{ marginBottom: "0.25rem" }}>
+      <div className="screen-header">
         <div>
           <h1 style={{ margin: 0 }}>Liste de courses</h1>
-          <p style={{ margin: 0, color: "var(--muted)" }}>
-            Du {formatDateLong(periodStart)} au {formatDateLong(periodEnd)}.
+          <p className="screen-kicker">
+            Du {formatDateLong(periodStart)} au {formatDateLong(periodEnd)}
           </p>
         </div>
       </div>
@@ -173,19 +179,19 @@ export function ShoppingListScreen() {
             </select>
           </div>
           <Button
-            onClick={handleGenerate}
+            onClick={() => void handleGenerate()}
             disabled={generating || !periodStart || !periodEnd}
           >
-            {generating ? "…" : "Générer la liste"}
+            {generating ? "Génération…" : "Générer la liste"}
           </Button>
         </div>
         {error ? (
-          <p style={{ color: "var(--danger)", fontWeight: 700, margin: "0.6rem 0 0" }}>
+          <p style={{ color: "var(--danger)", fontWeight: 650, margin: "0.7rem 0 0" }}>
             {error}
           </p>
         ) : null}
         {message ? (
-          <p style={{ color: "var(--accent-dark)", fontWeight: 700, margin: "0.6rem 0 0" }}>
+          <p style={{ color: "var(--accent-dark)", fontWeight: 600, margin: "0.7rem 0 0" }}>
             {message}
           </p>
         ) : null}
@@ -206,18 +212,16 @@ export function ShoppingListScreen() {
         </div>
       ) : (
         <div className="stack">
-          <div className="stack" style={{ gap: "0.4rem" }}>
+          <div className="stack" style={{ gap: "0.45rem" }}>
             <div className="row-spread">
-              <span style={{ fontWeight: 700 }}>
-                À acheter ({toBuy.length})
-              </span>
+              <p className="section-title">À acheter ({toBuy.length})</p>
               {toBuy.length === 0 ? (
                 <span className="tag">Rien à acheter</span>
               ) : null}
             </div>
             {toBuy.length === 0 ? (
               <p style={{ margin: 0, color: "var(--muted)" }}>
-                Tout est déjà coché comme « chez nous ».
+                Tout est déjà marqué comme chez vous.
               </p>
             ) : (
               toBuy.map((item) => (
@@ -232,12 +236,10 @@ export function ShoppingListScreen() {
           </div>
 
           {alreadyHave.length > 0 ? (
-            <div className="stack" style={{ gap: "0.4rem", marginTop: "0.75rem" }}>
-              <div className="row-spread">
-                <span style={{ fontWeight: 700, color: "var(--muted)" }}>
-                  Déjà chez nous ({alreadyHave.length})
-                </span>
-              </div>
+            <div className="stack" style={{ gap: "0.45rem", marginTop: "0.5rem" }}>
+              <p className="section-title">
+                Déjà chez nous ({alreadyHave.length})
+              </p>
               {alreadyHave.map((item) => (
                 <ItemRow
                   key={item.id}

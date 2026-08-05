@@ -3,7 +3,7 @@ import type { Dish, DishIngredient } from "@/features/dishes/types";
 import type { MealCycle, MealCycleEntry } from "@/features/cycles/types";
 import type { PlannedMeal } from "@/features/planning/types";
 import { getDb } from "./db/dexie";
-import { getSupabase } from "./supabase/client";
+import { DEMO_USER_ID, getSupabase } from "./supabase/client";
 import { addDays, toISODate } from "./date";
 
 const STORAGE_KEY = "meal-planner-demo-state";
@@ -577,11 +577,11 @@ export async function generateDemoShoppingList(
   }
 
   const db = getDb();
-  const userId = "demo-user";
+  const userId = DEMO_USER_ID;
   await db.shoppingListItems
     .where("userId")
     .equals(userId)
-    .and(
+    .filter(
       (item) =>
         item.periodStart === periodStart && item.periodEnd === periodEnd
     )
@@ -589,9 +589,10 @@ export async function generateDemoShoppingList(
 
   // Sécurité : retire aussi d'éventuelles lignes orphelines de la même période.
   await db.shoppingListItems
-    .where("periodStart")
-    .equals(periodStart)
-    .and((item) => item.periodEnd === periodEnd)
+    .filter(
+      (item) =>
+        item.periodStart === periodStart && item.periodEnd === periodEnd
+    )
     .delete();
 
   const rows: Array<{

@@ -5,9 +5,9 @@ import { usePathname } from "next/navigation";
 import { useSignOut } from "@/features/auth/AuthContext";
 
 const LINKS = [
-  { href: "/", label: "Planning", emoji: "📅" },
-  { href: "/plats", label: "Plats", emoji: "🍽️" },
-  { href: "/courses", label: "Courses", emoji: "🛒" },
+  { href: "/", label: "Planning" },
+  { href: "/plats", label: "Plats" },
+  { href: "/courses", label: "Courses" },
 ];
 
 export function Nav() {
@@ -17,6 +17,9 @@ export function Nav() {
   return (
     <nav className="nav">
       <div className="nav-inner">
+        <Link href="/" className="nav-brand">
+          Meal Planner
+        </Link>
         <div className="nav-links">
           {LINKS.map((link) => {
             const isActive =
@@ -27,8 +30,7 @@ export function Nav() {
                 href={link.href}
                 className={`nav-link ${isActive ? "active" : ""}`}
               >
-                <span>{link.emoji}</span>
-                <span>{link.label}</span>
+                {link.label}
               </Link>
             );
           })}

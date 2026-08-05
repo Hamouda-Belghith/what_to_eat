@@ -42,6 +42,7 @@ export function PlanningScreen() {
   const [dishes, setDishes] = useState<Dish[]>([]);
   const [repeat, setRepeat] = useState<RepeatConfig | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [hint, setHint] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
 
   const [editingCell, setEditingCell] = useState<{
@@ -49,11 +50,9 @@ export function PlanningScreen() {
     mealSlot: MealSlot;
   } | null>(null);
 
-  const [pendingEdit, setPendingEdit] = useState<{
-    date: string;
-    mealSlot: MealSlot;
-    dishId: string | null;
-  } | null>(null);
+  const [pendingDishId, setPendingDishId] = useState<string | null | undefined>(
+    undefined
+  );
 
   const weekStartISO = toISODate(weekStart);
   const weekEndISO = toISODate(addDays(weekStart, WEEK_DAYS - 1));
@@ -89,15 +88,23 @@ export function PlanningScreen() {
     setWeekStart(startOfWeek(new Date()));
   }
 
-  async function handleRepeatChange(value: string) {
+  async function applyRepeat(interval: RepeatInterval | null) {
     setBusy(true);
     setError(null);
+    setHint(null);
     try {
-      const interval: RepeatInterval | null =
-        value === "1" ? 1 : value === "2" ? 2 : null;
       const config = await setRepeatInterval(interval, weekStartISO);
       setRepeat(config);
       await loadMeals();
+      if (interval === null) {
+        setHint("Répétition désactivée.");
+      } else {
+        setHint(
+          interval === 1
+            ? "Cette semaine se répète chaque semaine."
+            : "Cette semaine et la suivante se répètent toutes les 2 semaines."
+        );
+      }
     } catch (err) {
       setError(err instanceof Error ? err.message : "Répétition impossible");
     } finally {
@@ -105,37 +112,37 @@ export function PlanningScreen() {
     }
   }
 
-  async function handleResyncPattern() {
-    if (!repeat?.intervalWeeks) return;
-    setBusy(true);
-    setError(null);
-    try {
-      const config = await setRepeatInterval(repeat.intervalWeeks, weekStartISO);
-      setRepeat(config);
-      await loadMeals();
-    } catch (err) {
-      setError(
-        err instanceof Error ? err.message : "Mise à jour du motif impossible"
+  async function handleRepeatSelect(interval: RepeatInterval | null) {
+    // Recliquer sur l'option déjà active = remplacer le motif par la semaine affichée.
+    if (
+      interval !== null &&
+      repeat?.active &&
+      repeat.intervalWeeks === interval
+    ) {
+      const ok = window.confirm(
+        "Remplacer le modèle répété par la semaine affichée ?"
       );
-    } finally {
-      setBusy(false);
+      if (!ok) return;
     }
+    await applyRepeat(interval);
   }
 
   function handleCellClick(date: string, mealSlot: MealSlot) {
+    setPendingDishId(undefined);
     setEditingCell({ date, mealSlot });
   }
 
   function handlePickDish(dishId: string | null) {
     if (!editingCell) return;
-    const { date, mealSlot } = editingCell;
-    setEditingCell(null);
 
     if (repeat?.active) {
-      setPendingEdit({ date, mealSlot, dishId });
+      // Garde le plat choisi et demande la portée dans la même modale.
+      setPendingDishId(dishId);
       return;
     }
 
+    const { date, mealSlot } = editingCell;
+    setEditingCell(null);
     void applyEdit(date, mealSlot, dishId, null);
   }
 
@@ -158,9 +165,11 @@ export function PlanningScreen() {
   }
 
   async function handleScopeChoice(scope: MealEditScope) {
-    if (!pendingEdit) return;
-    const { date, mealSlot, dishId } = pendingEdit;
-    setPendingEdit(null);
+    if (!editingCell || pendingDishId === undefined) return;
+    const { date, mealSlot } = editingCell;
+    const dishId = pendingDishId;
+    setEditingCell(null);
+    setPendingDishId(undefined);
     await applyEdit(date, mealSlot, dishId, scope);
   }
 
@@ -170,25 +179,23 @@ export function PlanningScreen() {
       )
     : undefined;
 
-  const repeatSelectValue = repeat?.intervalWeeks
-    ? String(repeat.intervalWeeks)
-    : "";
+  const choosingScope = editingCell !== null && pendingDishId !== undefined;
 
   return (
     <div className="screen">
-      <div className="row-spread" style={{ marginBottom: "0.25rem" }}>
+      <div className="screen-header">
         <div>
           <h1 style={{ margin: 0 }}>Planning</h1>
-          <p style={{ margin: 0, color: "var(--muted)" }}>
+          <p className="screen-kicker">
             Semaine du {formatDateLong(weekStartISO)}
           </p>
         </div>
-        <div className="row">
+        <div className="week-nav">
           <Button variant="ghost" onClick={previousWeek} aria-label="Semaine précédente">
             ←
           </Button>
           <Button variant="ghost" onClick={currentWeek}>
-            Cette semaine
+            Aujourd&apos;hui
           </Button>
           <Button variant="ghost" onClick={nextWeek} aria-label="Semaine suivante">
             →
@@ -196,42 +203,56 @@ export function PlanningScreen() {
         </div>
       </div>
 
-      <div className="card" style={{ marginBottom: "0.75rem" }}>
-        <div className="row" style={{ alignItems: "flex-end", flexWrap: "wrap" }}>
-          <div className="field" style={{ marginBottom: 0, minWidth: "12rem" }}>
-            <label htmlFor="repeat-select">Répéter cette semaine</label>
-            <select
-              id="repeat-select"
-              className="select"
-              value={repeatSelectValue}
+      <div className="card planning-toolbar">
+        <div className="repeat-panel">
+          <span className="repeat-panel-label">Répéter</span>
+          <div className="segmented" role="group" aria-label="Répétition de la semaine">
+            <button
+              type="button"
+              className={!repeat?.active ? "active" : ""}
               disabled={busy || repeat === null}
-              onChange={(e) => void handleRepeatChange(e.target.value)}
+              onClick={() => void handleRepeatSelect(null)}
             >
-              <option value="">Non</option>
-              <option value="1">Chaque semaine</option>
-              <option value="2">Toutes les 2 semaines</option>
-            </select>
+              Non
+            </button>
+            <button
+              type="button"
+              className={repeat?.intervalWeeks === 1 ? "active" : ""}
+              disabled={busy || repeat === null}
+              onClick={() => void handleRepeatSelect(1)}
+            >
+              Chaque semaine
+            </button>
+            <button
+              type="button"
+              className={repeat?.intervalWeeks === 2 ? "active" : ""}
+              disabled={busy || repeat === null}
+              onClick={() => void handleRepeatSelect(2)}
+            >
+              Toutes les 2 semaines
+            </button>
           </div>
           {repeat?.active ? (
-            <Button
-              variant="ghost"
-              disabled={busy}
-              onClick={() => void handleResyncPattern()}
-              title="Recopie la semaine affichée (et la suivante si 2 semaines) comme nouveau motif"
-            >
-              Mettre à jour le motif
-            </Button>
-          ) : null}
+            <p className="repeat-hint">
+              {repeat.intervalWeeks === 2
+                ? "Le modèle couvre cette semaine et la suivante. Reclique sur la même option pour le remplacer."
+                : "Reclique sur « Chaque semaine » pour remplacer le modèle par la semaine affichée."}
+            </p>
+          ) : (
+            <p className="repeat-hint">
+              Remplis la semaine, puis active la répétition pour la prolonger automatiquement.
+            </p>
+          )}
         </div>
-        {repeat?.active && repeat.intervalWeeks === 2 ? (
-          <p style={{ margin: "0.5rem 0 0", color: "var(--muted)", fontSize: "0.9rem" }}>
-            Le motif couvre cette semaine et la suivante.
-          </p>
-        ) : null}
       </div>
 
       {error ? (
-        <p style={{ color: "var(--danger)", fontWeight: 700 }}>{error}</p>
+        <p style={{ color: "var(--danger)", fontWeight: 650 }}>{error}</p>
+      ) : null}
+      {hint && !error ? (
+        <p style={{ color: "var(--accent-dark)", fontWeight: 600, margin: 0 }}>
+          {hint}
+        </p>
       ) : null}
 
       {meals === null ? (
@@ -239,7 +260,7 @@ export function PlanningScreen() {
       ) : (
         <div className="week-grid">
           <div>
-            <div style={{ height: "2rem" }} />
+            <div style={{ height: "2.4rem" }} />
             {MEAL_SLOTS.map((slot) => (
               <div key={slot} className="week-slot-label">
                 {MEAL_SLOT_LABELS[slot]}
@@ -262,7 +283,7 @@ export function PlanningScreen() {
                 <div className={`week-day-head ${isToday ? "today" : ""}`}>
                   {DAY_LABELS[i]}
                   <br />
-                  <span style={{ fontSize: "0.8rem" }}>
+                  <span style={{ fontSize: "0.78rem", fontWeight: 500 }}>
                     {formatDateShort(dateISO).split(" ")[1] ?? ""}
                   </span>
                 </div>
@@ -274,7 +295,6 @@ export function PlanningScreen() {
                       type="button"
                       className={`meal-cell ${meal ? "" : "meal-cell-empty"}`}
                       onClick={() => handleCellClick(dateISO, slot)}
-                      style={{ textAlign: "left" }}
                       disabled={busy}
                     >
                       {meal ? (
@@ -298,63 +318,69 @@ export function PlanningScreen() {
 
       {editingCell ? (
         <Modal
-          title={`${formatDateLong(editingCell.date)} — ${MEAL_SLOT_LABELS[editingCell.mealSlot]}`}
-          onClose={() => setEditingCell(null)}
+          title={
+            choosingScope
+              ? "Appliquer ce changement"
+              : `${formatDateLong(editingCell.date)} — ${MEAL_SLOT_LABELS[editingCell.mealSlot]}`
+          }
+          onClose={() => {
+            setEditingCell(null);
+            setPendingDishId(undefined);
+          }}
         >
-          <div className="stack">
-            <button
-              type="button"
-              className="btn btn-block"
-              onClick={() => handlePickDish(null)}
-              disabled={!editingMeal}
-            >
-              Retirer le repas
-            </button>
-            {dishes.map((dish) => (
-              <button
-                key={dish.id}
-                type="button"
-                className="btn btn-block"
-                onClick={() => handlePickDish(dish.id)}
-              >
-                {dish.name}
-              </button>
-            ))}
-            {dishes.length === 0 ? (
-              <p className="empty" style={{ padding: "1rem" }}>
-                Aucun plat. Crée d&apos;abord des plats dans l&apos;onglet « Plats ».
+          {choosingScope ? (
+            <div className="stack">
+              <p style={{ margin: 0, color: "var(--muted)" }}>
+                Une répétition est active. Ce changement concerne…
               </p>
-            ) : null}
-          </div>
-        </Modal>
-      ) : null}
-
-      {pendingEdit ? (
-        <Modal
-          title="Portée de la modification"
-          onClose={() => setPendingEdit(null)}
-        >
-          <p style={{ marginTop: 0, color: "var(--muted)" }}>
-            Un motif de répétition est actif. Appliquer ce changement à…
-          </p>
-          <div className="stack">
-            <Button
-              variant="primary"
-              disabled={busy}
-              onClick={() => void handleScopeChoice("this_week")}
-            >
-              Cette semaine seulement
-            </Button>
-            <Button
-              disabled={busy}
-              onClick={() => void handleScopeChoice("all_future")}
-            >
-              Toutes les semaines futures
-            </Button>
-            <Button variant="ghost" onClick={() => setPendingEdit(null)}>
-              Annuler
-            </Button>
-          </div>
+              <Button
+                variant="primary"
+                disabled={busy}
+                onClick={() => void handleScopeChoice("this_week")}
+              >
+                Cette semaine seulement
+              </Button>
+              <Button
+                disabled={busy}
+                onClick={() => void handleScopeChoice("all_future")}
+              >
+                Toutes les semaines futures
+              </Button>
+              <Button
+                variant="ghost"
+                onClick={() => setPendingDishId(undefined)}
+              >
+                Retour
+              </Button>
+            </div>
+          ) : (
+            <div className="dish-pick-list">
+              <button
+                type="button"
+                className="dish-pick-item"
+                onClick={() => handlePickDish(null)}
+                disabled={!editingMeal}
+                style={{ color: "var(--danger)" }}
+              >
+                Retirer le repas
+              </button>
+              {dishes.map((dish) => (
+                <button
+                  key={dish.id}
+                  type="button"
+                  className="dish-pick-item"
+                  onClick={() => handlePickDish(dish.id)}
+                >
+                  {dish.name}
+                </button>
+              ))}
+              {dishes.length === 0 ? (
+                <p className="empty" style={{ padding: "1rem" }}>
+                  Aucun plat. Crée d&apos;abord des plats dans l&apos;onglet « Plats ».
+                </p>
+              ) : null}
+            </div>
+          )}
         </Modal>
       ) : null}
     </div>

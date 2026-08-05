@@ -6,36 +6,52 @@ import { queueMutation } from "./syncQueue";
 import type { ShoppingListItem } from "./types";
 import { isDemoMode } from "@/lib/localDemo";
 
+function mapItem(item: {
+  id: string;
+  ingredientId: string;
+  ingredientName: string;
+  quantity: number;
+  unit: string;
+  isChecked: boolean;
+}): ShoppingListItem {
+  return {
+    id: item.id,
+    ingredientId: item.ingredientId,
+    ingredientName: item.ingredientName,
+    quantity: item.quantity,
+    unit: item.unit,
+    isChecked: item.isChecked,
+  };
+}
+
 /**
- * Récupère la liste de courses pour une période donnée.
- * Source de vérité = Dexie (local) pour un affichage instantané et
- * offline. Dexie est lui-même rafraîchi depuis Supabase via
- * `refreshShoppingList` (à appeler quand le réseau est là).
+ * Source de vérité = Dexie. On lit toujours la table entière pour que
+ * useLiveQuery s'abonne correctement (un early-return avant la lecture
+ * Dexie empêchait les mises à jour après génération / cochage).
  */
 export function useShoppingList(
   periodStart: string,
   periodEnd: string
 ): ShoppingListItem[] | undefined {
   return useLiveQuery(async () => {
+    // Toujours observer la table, même avant d'avoir l'userId.
+    const all = await getDb().shoppingListItems.toArray();
     const userId = await getCurrentUserId();
     if (!userId) return [];
 
-    const items = await getDb()
-      .shoppingListItems.where("userId")
-      .equals(userId)
-      .and((item) => item.periodStart === periodStart && item.periodEnd === periodEnd)
-      .toArray();
-
-    return items.map(
-      (item): ShoppingListItem => ({
-        id: item.id,
-        ingredientId: item.ingredientId,
-        ingredientName: item.ingredientName,
-        quantity: item.quantity,
-        unit: item.unit,
-        isChecked: item.isChecked,
-      })
-    );
+    return all
+      .filter(
+        (item) =>
+          item.userId === userId &&
+          item.periodStart === periodStart &&
+          item.periodEnd === periodEnd
+      )
+      .map(mapItem)
+      .sort((a, b) =>
+        a.ingredientName.localeCompare(b.ingredientName, "fr", {
+          sensitivity: "base",
+        })
+      );
   }, [periodStart, periodEnd]);
 }
 
@@ -44,20 +60,18 @@ export async function toggleItemChecked(
   itemId: string,
   isChecked: boolean
 ): Promise<void> {
-  const userId = await getCurrentUserId();
-  if (!userId) return;
-
   await getDb().shoppingListItems.update(itemId, {
     isChecked,
     updatedAt: new Date().toISOString(),
   });
+
+  if (isDemoMode()) return;
+
   await queueMutation(itemId, "toggle_checked", { isChecked });
 }
 
 /**
  * Supprime un article : local d'abord (offline), puis Supabase.
- * En cas d'échec réseau, la suppression locale sera perdue au prochain
- * rafraîchissement complet — on ignore silencieusement (cas rare).
  */
 export async function removeItem(itemId: string): Promise<void> {
   await getDb().shoppingListItems.delete(itemId);
@@ -79,14 +93,15 @@ export async function removeItem(itemId: string): Promise<void> {
 }
 
 /**
- * Recharge la liste de courses depuis Supabase vers Dexie pour une période.
- * Remplace entièrement le cache local de cette période (évite les doublons
- * après une régénération qui crée de nouveaux ids).
+ * Recharge la liste depuis Supabase vers Dexie pour une période.
+ * Remplace entièrement le cache local de cette période.
  */
 export async function refreshShoppingList(
   periodStart: string,
   periodEnd: string
 ): Promise<void> {
+  if (isDemoMode()) return;
+
   const supabase = getSupabase();
   if (!supabase) return;
 
@@ -95,7 +110,9 @@ export async function refreshShoppingList(
 
   const { data, error } = (await supabase
     .from("shopping_list_items")
-    .select("id, ingredient_id, quantity, unit, is_checked, updated_at, ingredients(name)")
+    .select(
+      "id, ingredient_id, quantity, unit, is_checked, updated_at, ingredients(name)"
+    )
     .eq("user_id", userId)
     .eq("period_start", periodStart)
     .eq("period_end", periodEnd)) as {
@@ -120,7 +137,7 @@ export async function refreshShoppingList(
   await db.shoppingListItems
     .where("userId")
     .equals(userId)
-    .and(
+    .filter(
       (item) =>
         item.periodStart === periodStart && item.periodEnd === periodEnd
     )
@@ -150,12 +167,20 @@ export async function clearLocalShoppingListPeriod(
   periodEnd: string
 ): Promise<void> {
   const userId = await getCurrentUserId();
-  if (!userId) return;
+  if (!userId) {
+    await getDb()
+      .shoppingListItems.filter(
+        (item) =>
+          item.periodStart === periodStart && item.periodEnd === periodEnd
+      )
+      .delete();
+    return;
+  }
 
   await getDb()
     .shoppingListItems.where("userId")
     .equals(userId)
-    .and(
+    .filter(
       (item) =>
         item.periodStart === periodStart && item.periodEnd === periodEnd
     )
