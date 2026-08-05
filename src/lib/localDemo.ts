@@ -577,6 +577,17 @@ export async function generateDemoShoppingList(
   }
 
   const db = getDb();
+  const userId = "demo-user";
+  await db.shoppingListItems
+    .where("userId")
+    .equals(userId)
+    .and(
+      (item) =>
+        item.periodStart === periodStart && item.periodEnd === periodEnd
+    )
+    .delete();
+
+  // Sécurité : retire aussi d'éventuelles lignes orphelines de la même période.
   await db.shoppingListItems
     .where("periodStart")
     .equals(periodStart)
@@ -600,7 +611,7 @@ export async function generateDemoShoppingList(
     for (const [unit, quantity] of unitTotals) {
       rows.push({
         id: crypto.randomUUID(),
-        userId: "demo-user",
+        userId,
         ingredientId,
         ingredientName: ingredientMap.get(ingredientId) ?? "",
         periodStart,

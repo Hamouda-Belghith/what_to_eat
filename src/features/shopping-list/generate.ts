@@ -1,8 +1,16 @@
 import type { PostgrestError } from "@supabase/supabase-js";
 import { getCurrentUserId, getSupabase } from "@/lib/supabase/client";
 import { fetchPlannedMeals } from "@/features/planning/api";
-import { addDays, toISODate } from "@/lib/date";
-import { refreshShoppingList } from "./useShoppingList";
+import {
+  addInclusiveDuration,
+  endOfWeek,
+  toISODate,
+  type DurationUnit,
+} from "@/lib/date";
+import {
+  clearLocalShoppingListPeriod,
+  refreshShoppingList,
+} from "./useShoppingList";
 import {
   generateDemoShoppingList,
   isDemoMode,
@@ -47,7 +55,6 @@ export async function generateShoppingList(
     throw new Error("Aucun repas planifié sur cette période");
   }
 
-  // Nombre d'occurrences de chaque plat sur la période.
   const dishOccurrences = new Map<string, number>();
   for (const meal of planned) {
     dishOccurrences.set(
@@ -56,7 +63,6 @@ export async function generateShoppingList(
     );
   }
 
-  // Charge les plats planifiés avec leurs ingrédients.
   const dishIds = [...dishOccurrences.keys()];
   const { data: dishRows, error: dishError } = (await supabase
     .from("dishes")
@@ -73,7 +79,6 @@ export async function generateShoppingList(
     throw new Error("Impossible de générer la liste");
   }
 
-  // Agrège par ingrédient, puis par unité.
   const totals = new Map<
     string,
     { name: string; quantities: Map<string, number> }
@@ -100,7 +105,6 @@ export async function generateShoppingList(
     throw new Error("Les plats planifiés n'ont pas d'ingrédients");
   }
 
-  // Remplacement complet de la liste de la période.
   const { error: delError } = (await supabase
     .from("shopping_list_items")
     .delete()
@@ -112,6 +116,8 @@ export async function generateShoppingList(
     console.warn("Impossible de vider l'ancienne liste", delError);
     throw new Error("Impossible de régénérer la liste");
   }
+
+  await clearLocalShoppingListPeriod(periodStart, periodEnd);
 
   const rows: Array<{
     user_id: string;
@@ -144,14 +150,47 @@ export async function generateShoppingList(
     throw new Error("Impossible d'enregistrer la liste");
   }
 
-  // Rafraîchit le cache local (Dexie) pour l'affichage offline.
   await refreshShoppingList(periodStart, periodEnd);
 
   return { count: rows.length };
 }
 
-/** Période par défaut : les 7 prochains jours (aujourd'hui inclus). */
-export function getDefaultPeriod(): { periodStart: string; periodEnd: string } {
+export interface ShoppingPeriod {
+  periodStart: string;
+  periodEnd: string;
+  amount: number;
+  unit: DurationUnit;
+}
+
+/** Période par défaut : aujourd'hui → dimanche de la semaine en cours. */
+export function getDefaultPeriod(): ShoppingPeriod {
   const today = new Date();
-  return { periodStart: toISODate(today), periodEnd: toISODate(addDays(today, 6)) };
+  today.setHours(0, 0, 0, 0);
+  const sunday = endOfWeek(today);
+  const msPerDay = 24 * 60 * 60 * 1000;
+  const days =
+    Math.round((sunday.getTime() - today.getTime()) / msPerDay) + 1;
+
+  return {
+    periodStart: toISODate(today),
+    periodEnd: toISODate(sunday),
+    amount: Math.max(1, days),
+    unit: "day",
+  };
+}
+
+/** Calcule la période à partir d'aujourd'hui + durée (nombre + unité). */
+export function periodFromDuration(
+  amount: number,
+  unit: DurationUnit
+): ShoppingPeriod {
+  const today = new Date();
+  today.setHours(0, 0, 0, 0);
+  const safeAmount = Math.max(1, Math.floor(amount));
+  return {
+    periodStart: toISODate(today),
+    periodEnd: toISODate(addInclusiveDuration(today, safeAmount, unit)),
+    amount: safeAmount,
+    unit,
+  };
 }

@@ -1,5 +1,6 @@
 import { createClient, type SupabaseClient } from "@supabase/supabase-js";
 import type { Database } from "./database.types";
+import { getLocalSession } from "@/features/auth/localAuth";
 
 // Client Supabase créé paresseusement (lazy) : si les variables
 // d'environnement ne sont pas définies (build, SSR), on renvoie null
@@ -9,6 +10,9 @@ import type { Database } from "./database.types";
 // NEXT_PUBLIC_* car utilisées côté navigateur (clé "anon", publique par
 // design ; la sécurité réelle repose sur les policies RLS).
 export type Supabase = SupabaseClient<Database>;
+
+/** Identifiant stable utilisé en mode démo (Dexie / liste de courses). */
+export const DEMO_USER_ID = "demo-user";
 
 let cachedClient: Supabase | null = null;
 
@@ -26,7 +30,10 @@ export function getSupabase(): Supabase | null {
 
 export async function getCurrentUserId(): Promise<string | null> {
   const supabase = getSupabase();
-  if (!supabase) return null;
+  if (!supabase) {
+    const session = await getLocalSession();
+    return session ? DEMO_USER_ID : null;
+  }
 
   const {
     data: { user },

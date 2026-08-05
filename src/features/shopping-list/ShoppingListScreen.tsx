@@ -5,20 +5,71 @@ import { useLiveQuery } from "dexie-react-hooks";
 import { getDb } from "@/lib/db/dexie";
 import { Button } from "@/components/ui/Button";
 import { Spinner } from "@/components/ui/Spinner";
-import { formatDateLong, formatQuantity } from "@/lib/date";
+import { formatDateLong, formatQuantity, type DurationUnit } from "@/lib/date";
 import {
   useShoppingList,
   toggleItemChecked,
   refreshShoppingList,
   removeItem,
 } from "./useShoppingList";
-import { generateShoppingList, getDefaultPeriod } from "./generate";
+import {
+  generateShoppingList,
+  getDefaultPeriod,
+  periodFromDuration,
+} from "./generate";
 import { flushPendingMutations } from "./syncQueue";
+import type { ShoppingListItem } from "./types";
+
+const UNIT_OPTIONS: { value: DurationUnit; label: string }[] = [
+  { value: "day", label: "jour(s)" },
+  { value: "week", label: "semaine(s)" },
+  { value: "month", label: "mois" },
+];
+
+function ItemRow({
+  item,
+  onToggle,
+  onRemove,
+}: {
+  item: ShoppingListItem;
+  onToggle: (id: string, checked: boolean) => void;
+  onRemove: (id: string) => void;
+}) {
+  return (
+    <div className={`shop-item ${item.isChecked ? "checked" : ""}`}>
+      <input
+        type="checkbox"
+        className="shop-checkbox"
+        checked={item.isChecked}
+        onChange={(e) => onToggle(item.id, e.target.checked)}
+        aria-label={
+          item.isChecked
+            ? `${item.ingredientName} — déjà chez nous`
+            : `${item.ingredientName} — à acheter`
+        }
+      />
+      <span className="shop-name">{item.ingredientName}</span>
+      <span className="shop-qty">
+        {formatQuantity(item.quantity)} {item.unit}
+      </span>
+      <button
+        type="button"
+        className="btn btn-ghost btn-icon"
+        aria-label={`Retirer ${item.ingredientName}`}
+        onClick={() => onRemove(item.id)}
+      >
+        ✕
+      </button>
+    </div>
+  );
+}
 
 export function ShoppingListScreen() {
-  const defaultPeriod = useMemo(() => getDefaultPeriod(), []);
-  const [periodStart, setPeriodStart] = useState(defaultPeriod.periodStart);
-  const [periodEnd, setPeriodEnd] = useState(defaultPeriod.periodEnd);
+  const defaults = useMemo(() => getDefaultPeriod(), []);
+  const [amount, setAmount] = useState(defaults.amount);
+  const [unit, setUnit] = useState<DurationUnit>(defaults.unit);
+  const [periodStart, setPeriodStart] = useState(defaults.periodStart);
+  const [periodEnd, setPeriodEnd] = useState(defaults.periodEnd);
 
   const [generating, setGenerating] = useState(false);
   const [message, setMessage] = useState<string | null>(null);
@@ -27,12 +78,18 @@ export function ShoppingListScreen() {
   const items = useShoppingList(periodStart, periodEnd);
   const pendingCount = useLiveQuery(() => getDb().pendingMutations.count(), []);
 
-  const checkedCount = items?.filter((i) => i.isChecked).length ?? 0;
+  const toBuy = items?.filter((i) => !i.isChecked) ?? [];
+  const alreadyHave = items?.filter((i) => i.isChecked) ?? [];
   const totalCount = items?.length ?? 0;
 
-  // Rafraîchit depuis Supabase à l'ouverture (réseau présent) : on
-  // récupère la liste la plus à jour, puis on rejoue les mutations
-  // locales en attente si besoin.
+  function applyDuration(nextAmount: number, nextUnit: DurationUnit) {
+    const period = periodFromDuration(nextAmount, nextUnit);
+    setAmount(period.amount);
+    setUnit(period.unit);
+    setPeriodStart(period.periodStart);
+    setPeriodEnd(period.periodEnd);
+  }
+
   useEffect(() => {
     setMessage(null);
     setError(null);
@@ -69,8 +126,6 @@ export function ShoppingListScreen() {
     await removeItem(itemId);
   }
 
-  const allChecked = totalCount > 0 && checkedCount === totalCount;
-
   return (
     <div className="screen">
       <div className="row-spread" style={{ marginBottom: "0.25rem" }}>
@@ -83,26 +138,39 @@ export function ShoppingListScreen() {
       </div>
 
       <div className="card">
-        <div className="row" style={{ alignItems: "flex-end" }}>
-          <div className="field" style={{ marginBottom: 0, flex: 1, minWidth: "8rem" }}>
-            <label htmlFor="period-start">Du</label>
+        <div className="row" style={{ alignItems: "flex-end", flexWrap: "wrap" }}>
+          <div className="field" style={{ marginBottom: 0, width: "5.5rem" }}>
+            <label htmlFor="duration-amount">Pendant</label>
             <input
-              id="period-start"
-              type="date"
+              id="duration-amount"
+              type="number"
               className="input"
-              value={periodStart}
-              onChange={(e) => setPeriodStart(e.target.value)}
+              min={1}
+              step={1}
+              value={amount}
+              onChange={(e) => {
+                const next = Number(e.target.value);
+                if (!Number.isFinite(next) || next < 1) return;
+                applyDuration(next, unit);
+              }}
             />
           </div>
-          <div className="field" style={{ marginBottom: 0, flex: 1, minWidth: "8rem" }}>
-            <label htmlFor="period-end">Au</label>
-            <input
-              id="period-end"
-              type="date"
-              className="input"
-              value={periodEnd}
-              onChange={(e) => setPeriodEnd(e.target.value)}
-            />
+          <div className="field" style={{ marginBottom: 0, minWidth: "9rem", flex: 1 }}>
+            <label htmlFor="duration-unit">Unité</label>
+            <select
+              id="duration-unit"
+              className="select"
+              value={unit}
+              onChange={(e) =>
+                applyDuration(amount, e.target.value as DurationUnit)
+              }
+            >
+              {UNIT_OPTIONS.map((opt) => (
+                <option key={opt.value} value={opt.value}>
+                  {opt.label}
+                </option>
+              ))}
+            </select>
           </div>
           <Button
             onClick={handleGenerate}
@@ -132,46 +200,54 @@ export function ShoppingListScreen() {
 
       {items === undefined ? (
         <Spinner />
-      ) : items.length === 0 ? (
+      ) : totalCount === 0 ? (
         <div className="card empty">
           Aucun article sur cette période. Génère la liste pour la remplir.
         </div>
       ) : (
         <div className="stack">
-          <div className="row-spread">
-            <span style={{ fontWeight: 700 }}>
-              {checkedCount}/{totalCount} coché{totalCount > 1 ? "s" : ""}
-            </span>
-            {allChecked ? <span className="tag">🎉 Tout est coché !</span> : null}
-          </div>
           <div className="stack" style={{ gap: "0.4rem" }}>
-            {items.map((item) => (
-              <div
-                key={item.id}
-                className={`shop-item ${item.isChecked ? "checked" : ""}`}
-              >
-                <input
-                  type="checkbox"
-                  className="shop-checkbox"
-                  checked={item.isChecked}
-                  onChange={(e) => handleToggle(item.id, e.target.checked)}
-                  aria-label={`Cocher ${item.ingredientName}`}
+            <div className="row-spread">
+              <span style={{ fontWeight: 700 }}>
+                À acheter ({toBuy.length})
+              </span>
+              {toBuy.length === 0 ? (
+                <span className="tag">Rien à acheter</span>
+              ) : null}
+            </div>
+            {toBuy.length === 0 ? (
+              <p style={{ margin: 0, color: "var(--muted)" }}>
+                Tout est déjà coché comme « chez nous ».
+              </p>
+            ) : (
+              toBuy.map((item) => (
+                <ItemRow
+                  key={item.id}
+                  item={item}
+                  onToggle={handleToggle}
+                  onRemove={handleRemove}
                 />
-                <span className="shop-name">{item.ingredientName}</span>
-                <span className="shop-qty">
-                  {formatQuantity(item.quantity)} {item.unit}
-                </span>
-                <button
-                  type="button"
-                  className="btn btn-ghost btn-icon"
-                  aria-label={`Retirer ${item.ingredientName}`}
-                  onClick={() => handleRemove(item.id)}
-                >
-                  ✕
-                </button>
-              </div>
-            ))}
+              ))
+            )}
           </div>
+
+          {alreadyHave.length > 0 ? (
+            <div className="stack" style={{ gap: "0.4rem", marginTop: "0.75rem" }}>
+              <div className="row-spread">
+                <span style={{ fontWeight: 700, color: "var(--muted)" }}>
+                  Déjà chez nous ({alreadyHave.length})
+                </span>
+              </div>
+              {alreadyHave.map((item) => (
+                <ItemRow
+                  key={item.id}
+                  item={item}
+                  onToggle={handleToggle}
+                  onRemove={handleRemove}
+                />
+              ))}
+            </div>
+          ) : null}
         </div>
       )}
     </div>

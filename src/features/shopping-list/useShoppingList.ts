@@ -80,8 +80,8 @@ export async function removeItem(itemId: string): Promise<void> {
 
 /**
  * Recharge la liste de courses depuis Supabase vers Dexie pour une période.
- * À appeler quand le réseau est disponible ; ne bloque pas l'affichage
- * si l'appel échoue (l'utilisateur garde les données locales existantes).
+ * Remplace entièrement le cache local de cette période (évite les doublons
+ * après une régénération qui crée de nouveaux ids).
  */
 export async function refreshShoppingList(
   periodStart: string,
@@ -116,7 +116,19 @@ export async function refreshShoppingList(
     return;
   }
 
-  await getDb().shoppingListItems.bulkPut(
+  const db = getDb();
+  await db.shoppingListItems
+    .where("userId")
+    .equals(userId)
+    .and(
+      (item) =>
+        item.periodStart === periodStart && item.periodEnd === periodEnd
+    )
+    .delete();
+
+  if (data.length === 0) return;
+
+  await db.shoppingListItems.bulkPut(
     data.map((row) => ({
       id: row.id,
       userId,
@@ -130,4 +142,22 @@ export async function refreshShoppingList(
       updatedAt: row.updated_at,
     }))
   );
+}
+
+/** Vide le cache Dexie pour une période (avant régénération). */
+export async function clearLocalShoppingListPeriod(
+  periodStart: string,
+  periodEnd: string
+): Promise<void> {
+  const userId = await getCurrentUserId();
+  if (!userId) return;
+
+  await getDb()
+    .shoppingListItems.where("userId")
+    .equals(userId)
+    .and(
+      (item) =>
+        item.periodStart === periodStart && item.periodEnd === periodEnd
+    )
+    .delete();
 }
