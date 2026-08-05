@@ -12,7 +12,7 @@ type MutateResult = { error: PostgrestError | null };
 
 interface PlannedDishRow {
   id: string;
-  ingredients?: {
+  dish_ingredients?: {
     ingredient_id: string;
     quantity: number;
     unit: string;
@@ -24,6 +24,7 @@ interface PlannedDishRow {
  * Agrège les ingrédients des plats planifiés sur une période et écrase
  * la liste de courses correspondante (nouvelle période = nouvelle liste).
  * Même ingrédient + même unité : quantités additionnées.
+ * Un plat planifié plusieurs fois multiplie ses quantités.
  */
 export async function generateShoppingList(
   periodStart: string,
@@ -46,8 +47,17 @@ export async function generateShoppingList(
     throw new Error("Aucun repas planifié sur cette période");
   }
 
+  // Nombre d'occurrences de chaque plat sur la période.
+  const dishOccurrences = new Map<string, number>();
+  for (const meal of planned) {
+    dishOccurrences.set(
+      meal.dishId,
+      (dishOccurrences.get(meal.dishId) ?? 0) + 1
+    );
+  }
+
   // Charge les plats planifiés avec leurs ingrédients.
-  const dishIds = [...new Set(planned.map((m) => m.dishId))];
+  const dishIds = [...dishOccurrences.keys()];
   const { data: dishRows, error: dishError } = (await supabase
     .from("dishes")
     .select(
@@ -70,7 +80,8 @@ export async function generateShoppingList(
   >();
 
   for (const row of dishRows) {
-    for (const ing of row.ingredients ?? []) {
+    const occurrences = dishOccurrences.get(row.id) ?? 1;
+    for (const ing of row.dish_ingredients ?? []) {
       const aggregate = totals.get(ing.ingredient_id) ?? {
         name: ing.ingredients?.name ?? "",
         quantities: new Map<string, number>(),
@@ -78,7 +89,8 @@ export async function generateShoppingList(
       const unit = ing.unit || "pièce";
       aggregate.quantities.set(
         unit,
-        (aggregate.quantities.get(unit) ?? 0) + Number(ing.quantity)
+        (aggregate.quantities.get(unit) ?? 0) +
+          Number(ing.quantity) * occurrences
       );
       totals.set(ing.ingredient_id, aggregate);
     }

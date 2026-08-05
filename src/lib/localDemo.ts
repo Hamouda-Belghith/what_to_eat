@@ -417,17 +417,27 @@ export async function generateDemoShoppingList(
     ingredientMap.set(ingredient.id, ingredient.name);
   }
 
-  const dishIngredientRows = state.dishIngredients.filter((entry) =>
-    planned.some((meal) => meal.dishId === entry.dishId)
-  );
+  const dishOccurrences = new Map<string, number>();
+  for (const meal of planned) {
+    dishOccurrences.set(
+      meal.dishId,
+      (dishOccurrences.get(meal.dishId) ?? 0) + 1
+    );
+  }
 
   const totals = new Map<string, Map<string, number>>();
-  for (const row of dishIngredientRows) {
+  for (const row of state.dishIngredients) {
+    const occurrences = dishOccurrences.get(row.dishId);
+    if (!occurrences) continue;
+
     const name = ingredientMap.get(row.ingredientId) ?? "";
     if (!name) continue;
 
     const unitTotals = totals.get(row.ingredientId) ?? new Map();
-    unitTotals.set(row.unit, (unitTotals.get(row.unit) ?? 0) + row.quantity);
+    unitTotals.set(
+      row.unit,
+      (unitTotals.get(row.unit) ?? 0) + row.quantity * occurrences
+    );
     totals.set(row.ingredientId, unitTotals);
   }
 

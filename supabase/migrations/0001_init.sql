@@ -1,4 +1,6 @@
--- Extension nécessaire pour gen_random_uuid()
+-- Schema initial pour un projet Supabase neuf.
+-- Pour une base déjà existante, utiliser la migration incrémentale
+-- supabase/migrations/0002_user_scoping.sql à la place.
 create extension if not exists "pgcrypto";
 
 -- Repas de la journée
