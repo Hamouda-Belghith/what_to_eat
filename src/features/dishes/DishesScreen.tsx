@@ -38,6 +38,8 @@ export function DishesScreen() {
   const [description, setDescription] = useState("");
   const [ingredients, setIngredients] = useState<DishIngredient[]>([]);
   const [ingredientSuggestions, setIngredientSuggestions] = useState<string[]>([]);
+  const [photoPreview, setPhotoPreview] = useState<string | null>(null);
+  const [photoChanged, setPhotoChanged] = useState(false);
   const [saving, setSaving] = useState(false);
 
   async function load() {
@@ -58,6 +60,8 @@ export function DishesScreen() {
     setName("");
     setDescription("");
     setIngredients([EmptyIngredientRow()]);
+    setPhotoPreview(null);
+    setPhotoChanged(false);
     setCreating(true);
   }
 
@@ -68,7 +72,24 @@ export function DishesScreen() {
     setIngredients(
       dish.ingredients.length > 0 ? dish.ingredients : [EmptyIngredientRow()]
     );
+    setPhotoPreview(dish.photoUrl);
+    setPhotoChanged(false);
     setCreating(true);
+  }
+
+  function handlePhotoSelect(file: File | undefined) {
+    if (!file) return;
+    const reader = new FileReader();
+    reader.onload = () => {
+      setPhotoPreview(typeof reader.result === "string" ? reader.result : null);
+      setPhotoChanged(true);
+    };
+    reader.readAsDataURL(file);
+  }
+
+  function handlePhotoRemove() {
+    setPhotoPreview(null);
+    setPhotoChanged(true);
   }
 
   async function handleSave(e: React.FormEvent) {
@@ -82,6 +103,7 @@ export function DishesScreen() {
         name,
         description,
         ingredients: ingredients.filter((i) => i.ingredientName.trim() !== ""),
+        photoUrl: photoChanged ? photoPreview : undefined,
       });
       if (!saved) {
         setError("Impossible d'enregistrer le plat. Réessaie.");
@@ -165,6 +187,10 @@ export function DishesScreen() {
         <div className="grid">
           {filteredDishes.map((dish) => (
             <div key={dish.id} className="card">
+              {dish.photoUrl ? (
+                // eslint-disable-next-line @next/next/no-img-element
+                <img src={dish.photoUrl} alt="" className="dish-card-photo" />
+              ) : null}
               <div className="row-spread">
                 <div>
                   <h2 style={{ fontSize: "1.1rem", marginBottom: "0.2rem" }}>
@@ -246,6 +272,47 @@ export function DishesScreen() {
               onChange={(e) => setDescription(e.target.value)}
               placeholder="Ex : la recette de grand-mère, 20 min de cuisson…"
             />
+
+            <div>
+              <span
+                style={{
+                  display: "block",
+                  fontWeight: 650,
+                  fontSize: "0.9rem",
+                  marginBottom: "0.4rem",
+                }}
+              >
+                Photo (optionnel)
+              </span>
+              <div className="dish-photo-field">
+                {photoPreview ? (
+                  // eslint-disable-next-line @next/next/no-img-element
+                  <img src={photoPreview} alt="" className="dish-photo-preview" />
+                ) : (
+                  <div className="dish-photo-placeholder" aria-hidden="true">
+                    📷
+                  </div>
+                )}
+                <div className="stack" style={{ gap: "0.4rem" }}>
+                  <input
+                    type="file"
+                    accept="image/*"
+                    aria-label="Choisir une photo du plat"
+                    onChange={(e) => handlePhotoSelect(e.target.files?.[0])}
+                  />
+                  {photoPreview ? (
+                    <Button
+                      type="button"
+                      size="sm"
+                      variant="ghost"
+                      onClick={handlePhotoRemove}
+                    >
+                      Retirer la photo
+                    </Button>
+                  ) : null}
+                </div>
+              </div>
+            </div>
 
             <div className="row-spread">
               <h3 style={{ fontSize: "1rem", margin: 0 }}>Ingrédients</h3>

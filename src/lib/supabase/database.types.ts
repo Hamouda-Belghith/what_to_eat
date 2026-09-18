@@ -29,12 +29,14 @@ export interface Database {
           id: string;
           name: string;
           description: string | null;
+          photo_url: string | null;
           created_at: string;
         };
         Insert: {
           id?: string;
           name: string;
           description?: string | null;
+          photo_url?: string | null;
           created_at?: string;
         };
         Update: Partial<Database["public"]["Tables"]["dishes"]["Insert"]>;
@@ -101,6 +103,7 @@ export interface Database {
           meal_slot: MealSlot;
           dish_id: string;
           meal_cycle_id: string | null;
+          meal_repeat_id: string | null;
           created_at: string;
         };
         Insert: {
@@ -109,11 +112,31 @@ export interface Database {
           meal_slot: MealSlot;
           dish_id: string;
           meal_cycle_id?: string | null;
+          meal_repeat_id?: string | null;
           created_at?: string;
         };
         Update: Partial<
           Database["public"]["Tables"]["planned_meals"]["Insert"]
         >;
+      };
+      meal_repeats: {
+        Row: {
+          id: string;
+          meal_slot: MealSlot;
+          dish_id: string;
+          start_date: string;
+          weeks_total: number | null;
+          created_at: string;
+        };
+        Insert: {
+          id?: string;
+          meal_slot: MealSlot;
+          dish_id: string;
+          start_date: string;
+          weeks_total?: number | null;
+          created_at?: string;
+        };
+        Update: Partial<Database["public"]["Tables"]["meal_repeats"]["Insert"]>;
       };
       shopping_list_items: {
         Row: {

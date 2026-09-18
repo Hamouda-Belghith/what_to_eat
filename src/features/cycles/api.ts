@@ -23,9 +23,9 @@ export async function fetchDishesForCycles(): Promise<Dish[]> {
 
   const { data, error } = (await supabase
     .from("dishes")
-    .select("id, name")
+    .select("id, name, photo_url")
     .order("name")) as {
-    data: { id: string; name: string }[] | null;
+    data: { id: string; name: string; photo_url: string | null }[] | null;
     error: PostgrestError | null;
   };
 
@@ -37,6 +37,7 @@ export async function fetchDishesForCycles(): Promise<Dish[]> {
     id: row.id,
     name: row.name,
     description: null,
+    photoUrl: row.photo_url,
     ingredients: [],
   }));
 }

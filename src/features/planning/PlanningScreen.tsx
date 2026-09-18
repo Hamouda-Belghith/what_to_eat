@@ -18,7 +18,7 @@ import {
   MEAL_SLOTS,
   MEAL_SLOT_LABELS,
 } from "@/features/cycles/api";
-import { fetchPlannedMeals } from "./api";
+import { createMealRepeat, ensureMealRepeatsApplied, fetchPlannedMeals } from "./api";
 import {
   ensurePatternApplied,
   getRepeatConfig,
@@ -28,10 +28,12 @@ import {
   type RepeatConfig,
   type RepeatInterval,
 } from "./repeat";
-import type { PlannedMeal } from "./types";
+import type { MealRepeatDuration, PlannedMeal } from "./types";
 
 const WEEK_DAYS = 7;
 const DAY_LABELS = ["Lun", "Mar", "Mer", "Jeu", "Ven", "Sam", "Dim"];
+
+type RepeatDurationChoice = "once" | MealRepeatDuration;
 
 export function PlanningScreen() {
   const [weekStart, setWeekStart] = useState<Date>(() =>
@@ -53,12 +55,14 @@ export function PlanningScreen() {
   const [pendingDishId, setPendingDishId] = useState<string | null | undefined>(
     undefined
   );
+  const [choosingRepeatDuration, setChoosingRepeatDuration] = useState(false);
 
   const weekStartISO = toISODate(weekStart);
   const weekEndISO = toISODate(addDays(weekStart, WEEK_DAYS - 1));
 
   async function loadMeals() {
     await ensurePatternApplied(weekStartISO, weekEndISO);
+    await ensureMealRepeatsApplied(weekStartISO, weekEndISO);
     const [mealRows, dishRows, repeatConfig] = await Promise.all([
       fetchPlannedMeals(weekStartISO, weekEndISO),
       fetchDishesForCycles(),
@@ -141,9 +145,44 @@ export function PlanningScreen() {
       return;
     }
 
+    if (dishId !== null && !editingMeal) {
+      // Case vide, pas de motif global actif : proposer une répétition
+      // par repas (uniquement à la création, pas quand on remplace une
+      // case déjà remplie — ça reste un simple changement pour cette
+      // semaine-là).
+      setPendingDishId(dishId);
+      setChoosingRepeatDuration(true);
+      return;
+    }
+
     const { date, mealSlot } = editingCell;
     setEditingCell(null);
     void applyEdit(date, mealSlot, dishId, null);
+  }
+
+  async function handleRepeatDurationChoice(choice: RepeatDurationChoice) {
+    if (!editingCell || pendingDishId === undefined || pendingDishId === null) return;
+    const { date, mealSlot } = editingCell;
+    const dishId = pendingDishId;
+    setEditingCell(null);
+    setPendingDishId(undefined);
+    setChoosingRepeatDuration(false);
+
+    if (choice === "once") {
+      await applyEdit(date, mealSlot, dishId, null);
+      return;
+    }
+
+    setBusy(true);
+    setError(null);
+    try {
+      await createMealRepeat({ mealSlot, dishId, startDate: date, weeksTotal: choice });
+      await loadMeals();
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Répétition impossible");
+    } finally {
+      setBusy(false);
+    }
   }
 
   async function applyEdit(
@@ -179,7 +218,10 @@ export function PlanningScreen() {
       )
     : undefined;
 
-  const choosingScope = editingCell !== null && pendingDishId !== undefined;
+  const choosingScope =
+    editingCell !== null && pendingDishId !== undefined && !choosingRepeatDuration;
+  const choosingDuration =
+    editingCell !== null && pendingDishId !== undefined && choosingRepeatDuration;
 
   return (
     <div className="screen">
@@ -234,13 +276,18 @@ export function PlanningScreen() {
           </div>
           {repeat?.active ? (
             <p className="repeat-hint">
+              Modèle basé sur la semaine du {formatDateLong(repeat.startDate ?? weekStartISO)}
+              {repeat.intervalWeeks === 2 ? " (et la suivante)" : ""}, visible sur les
+              cases marquées « Modèle ».{" "}
               {repeat.intervalWeeks === 2
-                ? "Le modèle couvre cette semaine et la suivante. Reclique sur la même option pour le remplacer."
-                : "Reclique sur « Chaque semaine » pour remplacer le modèle par la semaine affichée."}
+                ? "Reclique sur la même option pour le remplacer par la semaine affichée."
+                : "Reclique sur « Chaque semaine » pour le remplacer par la semaine affichée."}
             </p>
           ) : (
             <p className="repeat-hint">
               Remplis la semaine, puis active la répétition pour la prolonger automatiquement.
+              Pour répéter un seul repas (pas toute la semaine), clique directement sur sa
+              case et choisis une durée.
             </p>
           )}
         </div>
@@ -259,8 +306,12 @@ export function PlanningScreen() {
         <Spinner />
       ) : (
         <div className="week-grid">
-          <div>
-            <div style={{ height: "2.4rem" }} />
+          <div className="week-slot-col">
+            <div className="week-day-head" aria-hidden="true">
+              .
+              <br />
+              <span style={{ fontSize: "0.78rem", fontWeight: 500 }}>.</span>
+            </div>
             {MEAL_SLOTS.map((slot) => (
               <div key={slot} className="week-slot-label">
                 {MEAL_SLOT_LABELS[slot]}
@@ -299,9 +350,29 @@ export function PlanningScreen() {
                     >
                       {meal ? (
                         <>
+                          {meal.dishPhotoUrl ? (
+                            // eslint-disable-next-line @next/next/no-img-element
+                            <img
+                              src={meal.dishPhotoUrl}
+                              alt=""
+                              className="meal-cell-photo"
+                            />
+                          ) : null}
                           <span className="meal-cell-name">{meal.dishName}</span>
                           {meal.mealCycleId ? (
-                            <span className="meal-cell-override">répété</span>
+                            <span
+                              className="meal-cell-override"
+                              title="Fait partie du modèle de répétition hebdomadaire actif (barre « Répéter » en haut). Le modifier proposera de choisir : cette semaine seulement, ou toutes les semaines futures."
+                            >
+                              Modèle
+                            </span>
+                          ) : meal.mealRepeatId ? (
+                            <span
+                              className="meal-cell-override"
+                              title="Ce repas se répète chaque semaine depuis cette case. Le modifier ne change que cette semaine-là."
+                            >
+                              Répété
+                            </span>
                           ) : null}
                         </>
                       ) : (
@@ -321,11 +392,14 @@ export function PlanningScreen() {
           title={
             choosingScope
               ? "Appliquer ce changement"
+              : choosingDuration
+              ? "Répéter ce repas ?"
               : `${formatDateLong(editingCell.date)} — ${MEAL_SLOT_LABELS[editingCell.mealSlot]}`
           }
           onClose={() => {
             setEditingCell(null);
             setPendingDishId(undefined);
+            setChoosingRepeatDuration(false);
           }}
         >
           {choosingScope ? (
@@ -353,6 +427,38 @@ export function PlanningScreen() {
                 Retour
               </Button>
             </div>
+          ) : choosingDuration ? (
+            <div className="stack">
+              <p style={{ margin: 0, color: "var(--muted)" }}>
+                Ce repas peut se répéter chaque semaine. Tu pourras toujours
+                changer une semaine précise plus tard, sans impacter les autres.
+              </p>
+              <Button
+                variant="primary"
+                disabled={busy}
+                onClick={() => void handleRepeatDurationChoice("once")}
+              >
+                Une seule fois
+              </Button>
+              <Button disabled={busy} onClick={() => void handleRepeatDurationChoice(3)}>
+                Toutes les semaines, pendant 3 semaines
+              </Button>
+              <Button disabled={busy} onClick={() => void handleRepeatDurationChoice(4)}>
+                Toutes les semaines, pendant 4 semaines
+              </Button>
+              <Button disabled={busy} onClick={() => void handleRepeatDurationChoice(null)}>
+                Toutes les semaines, indéfiniment
+              </Button>
+              <Button
+                variant="ghost"
+                onClick={() => {
+                  setChoosingRepeatDuration(false);
+                  setPendingDishId(undefined);
+                }}
+              >
+                Retour
+              </Button>
+            </div>
           ) : (
             <div className="dish-pick-list">
               <button
@@ -371,6 +477,10 @@ export function PlanningScreen() {
                   className="dish-pick-item"
                   onClick={() => handlePickDish(dish.id)}
                 >
+                  {dish.photoUrl ? (
+                    // eslint-disable-next-line @next/next/no-img-element
+                    <img src={dish.photoUrl} alt="" className="dish-pick-photo" />
+                  ) : null}
                   {dish.name}
                 </button>
               ))}

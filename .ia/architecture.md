@@ -63,17 +63,35 @@ Tables principales :
 | Table                  | Rôle                                                             |
 |------------------------|-------------------------------------------------------------------|
 | `ingredients`          | Référentiel unique des ingrédients                                |
-| `dishes`               | Plats                                                              |
+| `dishes`               | Plats (dont `photo_url`, voir plus bas)                           |
 | `dish_ingredients`     | Composition d'un plat (ingrédient + quantité + unité)              |
 | `meal_cycles`          | Motif unique de répétition (1 ou 2 semaines), piloté depuis le Planning |
 | `meal_cycle_entries`   | Créneaux du motif (jour relatif + repas + plat)                        |
-| `planned_meals`        | Planning calendaire réel (override possible sans casser le motif)      |
+| `meal_repeats`         | Répétition légère d'un repas précis (durée en semaines ou indéfinie)   |
+| `planned_meals`        | Planning calendaire réel (override possible sans casser un motif/une répétition) |
 | `shopping_list_items`  | Liste de courses agrégée et persistée, cochable, source de l'offline |
 
-Point clé : un seul motif de répétition par utilisateur. `meal_cycle_entries`
+Point clé : un seul motif de répétition **global** par utilisateur
+(`meal_cycles`/`meal_cycle_entries`, toute la semaine). `meal_cycle_entries`
 (le **modèle**) est séparé de `planned_meals` (la **réalité calendaire**)
 pour remplir automatiquement les semaines futures tout en autorisant un
 override ponctuel (« cette semaine seulement ») sans casser la répétition.
+
+En complément, `meal_repeats` porte une répétition **par repas** (un
+seul créneau, pas toute la semaine), déclenchée directement depuis une
+case du planning avec une durée (3 semaines, 4 semaines, ou indéfinie).
+`planned_meals.meal_repeat_id` relie chaque occurrence matérialisée à
+sa règle. Contrairement au motif global, modifier une occurrence
+n'affecte que cette date — pas de propagation ni de choix de portée.
+Voir `.ia/decisions.md` (2026-09-18) et `src/features/planning/api.ts`.
+
+**Photo de plat** : `dishes.photo_url` stocke l'URL publique d'un
+fichier dans le bucket Supabase Storage `dish-photos` (policies RLS :
+lecture publique, écriture scoping par dossier `user_id/...`). En mode
+démo local, la photo est encodée en base64 directement dans
+`localStorage` (pas de vrai stockage de fichiers disponible hors
+Supabase). Affichée sur la fiche plat, le sélecteur du planning et les
+cases du planning.
 
 ## Stratégie offline (liste de courses uniquement)
 

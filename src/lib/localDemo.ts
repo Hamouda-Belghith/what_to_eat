@@ -1,7 +1,11 @@
 import type { MealSlot } from "@/lib/supabase/database.types";
 import type { Dish, DishIngredient } from "@/features/dishes/types";
 import type { MealCycle, MealCycleEntry } from "@/features/cycles/types";
-import type { PlannedMeal } from "@/features/planning/types";
+import type {
+  MealRepeat,
+  MealRepeatDuration,
+  PlannedMeal,
+} from "@/features/planning/types";
 import { getDb } from "./db/dexie";
 import { DEMO_USER_ID, getSupabase } from "./supabase/client";
 import { addDays, toISODate } from "./date";
@@ -19,6 +23,7 @@ interface DemoDish {
   id: string;
   name: string;
   description: string | null;
+  photoUrl: string | null;
   createdAt: string;
 }
 
@@ -52,6 +57,16 @@ interface DemoPlannedMeal {
   mealSlot: MealSlot;
   dishId: string;
   mealCycleId: string | null;
+  mealRepeatId: string | null;
+  createdAt: string;
+}
+
+interface DemoMealRepeat {
+  id: string;
+  mealSlot: MealSlot;
+  dishId: string;
+  startDate: string;
+  weeksTotal: MealRepeatDuration;
   createdAt: string;
 }
 
@@ -62,6 +77,7 @@ interface DemoState {
   mealCycles: DemoMealCycle[];
   mealCycleEntries: DemoMealCycleEntry[];
   plannedMeals: DemoPlannedMeal[];
+  mealRepeats: DemoMealRepeat[];
 }
 
 function createState(): DemoState {
@@ -72,6 +88,7 @@ function createState(): DemoState {
     mealCycles: [],
     mealCycleEntries: [],
     plannedMeals: [],
+    mealRepeats: [],
   };
 }
 
@@ -83,7 +100,10 @@ function loadState(): DemoState {
   if (typeof window === "undefined") return createState();
   try {
     const raw = window.localStorage.getItem(STORAGE_KEY);
-    return raw ? (JSON.parse(raw) as DemoState) : createState();
+    if (!raw) return createState();
+    // Rétrocompatibilité : les états sauvegardés avant l'ajout des
+    // photos/répétitions par repas n'ont pas ces champs.
+    return { ...createState(), ...(JSON.parse(raw) as Partial<DemoState>) };
   } catch {
     return createState();
   }
@@ -133,6 +153,7 @@ export async function fetchDemoDishes(): Promise<Dish[]> {
       id: dish.id,
       name: dish.name,
       description: dish.description,
+      photoUrl: dish.photoUrl,
       ingredients: state.dishIngredients
         .filter((entry) => entry.dishId === dish.id)
         .map((entry) => ({
@@ -148,11 +169,12 @@ export async function fetchDemoDishes(): Promise<Dish[]> {
 }
 
 export async function saveDemoDish(
-  dish: Omit<Dish, "id"> & { id?: string }
+  dish: Omit<Dish, "id" | "photoUrl"> & { id?: string; photoUrl?: string | null }
 ): Promise<Dish | null> {
   const state = loadState();
   const dishId = dish.id ?? crypto.randomUUID();
   const existingIndex = state.dishes.findIndex((row) => row.id === dishId);
+  const existingPhotoUrl = state.dishes[existingIndex]?.photoUrl ?? null;
 
   const trimmedName = dish.name.trim();
   if (!trimmedName) return null;
@@ -161,6 +183,7 @@ export async function saveDemoDish(
     id: dishId,
     name: trimmedName,
     description: dish.description?.trim() || null,
+    photoUrl: dish.photoUrl === undefined ? existingPhotoUrl : dish.photoUrl,
     createdAt: now(),
   };
 
@@ -198,6 +221,7 @@ export async function deleteDemoDish(id: string): Promise<void> {
     (entry) => entry.dishId !== id
   );
   state.plannedMeals = state.plannedMeals.filter((meal) => meal.dishId !== id);
+  state.mealRepeats = state.mealRepeats.filter((repeat) => repeat.dishId !== id);
   saveState(state);
 }
 
@@ -208,6 +232,7 @@ export async function fetchDemoDishesForCycles(): Promise<Dish[]> {
       id: dish.id,
       name: dish.name,
       description: null,
+      photoUrl: dish.photoUrl,
       ingredients: [],
     }))
     .sort((a, b) => a.name.localeCompare(b.name, "fr"));
@@ -378,6 +403,7 @@ export async function updateDemoPatternEntryAndFuture(params: {
           mealSlot: params.mealSlot,
           dishId: params.dishId,
           mealCycleId: params.patternId,
+          mealRepeatId: null,
           createdAt: now(),
         });
         existingKeys.add(`${dateStr}-${params.mealSlot}`);
@@ -423,22 +449,27 @@ export async function fetchDemoPlannedMeals(
   const state = loadState();
   return state.plannedMeals
     .filter((meal) => meal.date >= periodStart && meal.date <= periodEnd)
-    .map((meal) => ({
-      id: meal.id,
-      date: meal.date,
-      mealSlot: meal.mealSlot,
-      dishId: meal.dishId,
-      dishName:
-        state.dishes.find((dish) => dish.id === meal.dishId)?.name ?? "",
-      mealCycleId: meal.mealCycleId,
-    }));
+    .map((meal) => {
+      const dish = state.dishes.find((d) => d.id === meal.dishId);
+      return {
+        id: meal.id,
+        date: meal.date,
+        mealSlot: meal.mealSlot,
+        dishId: meal.dishId,
+        dishName: dish?.name ?? "",
+        dishPhotoUrl: dish?.photoUrl ?? null,
+        mealCycleId: meal.mealCycleId,
+        mealRepeatId: meal.mealRepeatId ?? null,
+      };
+    });
 }
 
 export async function setDemoPlannedMeal(
   date: string,
   mealSlot: MealSlot,
   dishId: string,
-  mealCycleId: string | null = null
+  mealCycleId: string | null = null,
+  mealRepeatId: string | null = null
 ): Promise<void> {
   const state = loadState();
   const existingIndex = state.plannedMeals.findIndex(
@@ -450,6 +481,7 @@ export async function setDemoPlannedMeal(
       ...state.plannedMeals[existingIndex],
       dishId,
       mealCycleId,
+      mealRepeatId,
       createdAt: now(),
     };
   } else {
@@ -459,8 +491,115 @@ export async function setDemoPlannedMeal(
       mealSlot,
       dishId,
       mealCycleId,
+      mealRepeatId,
       createdAt: now(),
     });
+  }
+
+  saveState(state);
+}
+
+export async function fetchDemoMealRepeats(): Promise<MealRepeat[]> {
+  const state = loadState();
+  return state.mealRepeats.map((repeat) => ({
+    id: repeat.id,
+    mealSlot: repeat.mealSlot,
+    dishId: repeat.dishId,
+    startDate: repeat.startDate,
+    weeksTotal: repeat.weeksTotal,
+  }));
+}
+
+export async function createDemoMealRepeat(params: {
+  mealSlot: MealSlot;
+  dishId: string;
+  startDate: string;
+  weeksTotal: MealRepeatDuration;
+}): Promise<MealRepeat | null> {
+  const state = loadState();
+  const repeat: DemoMealRepeat = {
+    id: crypto.randomUUID(),
+    mealSlot: params.mealSlot,
+    dishId: params.dishId,
+    startDate: params.startDate,
+    weeksTotal: params.weeksTotal,
+    createdAt: now(),
+  };
+  state.mealRepeats.push(repeat);
+  saveState(state);
+
+  await setDemoPlannedMeal(
+    params.startDate,
+    params.mealSlot,
+    params.dishId,
+    null,
+    repeat.id
+  );
+
+  const forwardWeeks = params.weeksTotal ?? 8;
+  const horizonEnd = toISODate(
+    addDays(new Date(`${params.startDate}T00:00:00`), forwardWeeks * 7 - 1)
+  );
+  await applyDemoMealRepeatsToRange(params.startDate, horizonEnd);
+
+  return {
+    id: repeat.id,
+    mealSlot: repeat.mealSlot,
+    dishId: repeat.dishId,
+    startDate: repeat.startDate,
+    weeksTotal: repeat.weeksTotal,
+  };
+}
+
+/**
+ * Remplit les occurrences futures des répétitions par repas sur la
+ * période donnée. Chaque occurrence reste une ligne indépendante : la
+ * modifier ne touche que cette date (contrairement au motif global).
+ */
+export async function applyDemoMealRepeatsToRange(
+  periodStart: string,
+  periodEnd: string
+): Promise<void> {
+  const state = loadState();
+  if (state.mealRepeats.length === 0) return;
+
+  const existingKeys = new Set(
+    state.plannedMeals
+      .filter((meal) => meal.date >= periodStart && meal.date <= periodEnd)
+      .map((meal) => `${meal.date}-${meal.mealSlot}`)
+  );
+
+  const start = new Date(`${periodStart}T00:00:00`);
+  const end = new Date(`${periodEnd}T00:00:00`);
+
+  for (const repeat of state.mealRepeats) {
+    const repeatStart = new Date(`${repeat.startDate}T00:00:00`);
+    const lastDate = repeat.weeksTotal
+      ? addDays(repeatStart, (repeat.weeksTotal - 1) * 7)
+      : null;
+
+    let cursor = new Date(repeatStart);
+    while (cursor < start) cursor = addDays(cursor, 7);
+
+    while (cursor <= end) {
+      if (cursor >= repeatStart && (!lastDate || cursor <= lastDate)) {
+        const dateStr = toISODate(cursor);
+        const key = `${dateStr}-${repeat.mealSlot}`;
+        if (!existingKeys.has(key)) {
+          state.plannedMeals.push({
+            id: crypto.randomUUID(),
+            date: dateStr,
+            mealSlot: repeat.mealSlot,
+            dishId: repeat.dishId,
+            mealCycleId: null,
+            mealRepeatId: repeat.id,
+            createdAt: now(),
+          });
+          existingKeys.add(key);
+        }
+      }
+      cursor = addDays(cursor, 7);
+    }
   }
 
   saveState(state);
@@ -521,6 +660,7 @@ export async function applyDemoCycleToRange(
           mealSlot: slot,
           dishId: entry.dishId,
           mealCycleId: cycleId,
+          mealRepeatId: null,
           createdAt: now(),
         });
       }

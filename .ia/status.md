@@ -14,6 +14,25 @@ Résumé:
   (`src/features/dishes/DishesScreen.tsx`). Filtrage simple en mémoire,
   pas de recherche côté serveur (nombre de plats attendu faible pour 2
   utilisateurs).
+- **Alignement des libellés du Planning** : « Petit-déj / Déjeuner /
+  Dîner » sont maintenant alignés avec leurs 3 lignes de cases (la
+  colonne d'étiquettes mirrore la structure de l'en-tête des jours et
+  a la même hauteur de ligne que `.meal-cell`). Voir
+  `src/features/planning/PlanningScreen.tsx` et `src/app/globals.css`.
+- **Photo de plat** : chaque plat peut avoir une photo (upload depuis
+  l'écran Plats), affichée sur sa fiche, dans le sélecteur du planning
+  et sur les cases du planning. Stockée dans Supabase Storage (bucket
+  `dish-photos`) en prod, en base64 dans `localStorage` en mode démo.
+  Voir `.ia/decisions.md` (2026-09-18) et la migration
+  `supabase/migrations/0004_dish_photos_and_meal_repeats.sql` (à
+  appliquer sur la base de production).
+- **Répétition par repas** : en plus du motif global existant, un repas
+  peut désormais se répéter chaque semaine pour une durée choisie (3
+  semaines, 4 semaines, indéfiniment) directement depuis une case vide
+  du planning. Modifier une occurrence ne change que cette date, sans
+  question de portée. Voir `.ia/decisions.md` (2026-09-18),
+  `src/features/planning/api.ts` (`createMealRepeat`,
+  `ensureMealRepeatsApplied`) et la même migration `0004`.
 
 État de la production :
 - Le frontend Vercel est prêt, mais la version “réelle” n'est pas encore
@@ -21,8 +40,9 @@ Résumé:
   renseignées dans Vercel : `NEXT_PUBLIC_SUPABASE_URL` et
   `NEXT_PUBLIC_SUPABASE_ANON_KEY`.
 - Appliquer les migrations SQL (`0001_init.sql`, et le cas échéant
-  `0002_user_scoping.sql`, `0003_single_repeat_pattern.sql`) sur la base
-  Supabase de production.
+  `0002_user_scoping.sql`, `0003_single_repeat_pattern.sql`,
+  `0004_dish_photos_and_meal_repeats.sql`) sur la base Supabase de
+  production.
 - L'authentification email Supabase doit être vérifiée si les utilisateurs
   doivent créer des comptes depuis la version déployée.
 

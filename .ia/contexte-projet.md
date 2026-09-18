@@ -24,6 +24,12 @@ accueillir d'autres foyers pour l'instant.
   ressource « Cycles » séparée — la répétition est un paramètre du
   planning. Lors d'une modification, choisir entre cette semaine
   seulement ou toutes les semaines futures.
+- Répéter un repas précis (pas toute la semaine) directement depuis sa
+  case du planning, pour une durée choisie (3 semaines, 4 semaines, ou
+  indéfiniment). Modifier une occurrence ne concerne que cette
+  semaine-là, sans question de portée à chaque fois.
+- Associer une photo (optionnelle) à un plat, visible sur sa fiche et
+  sur les cases du planning où il est prévu.
 - Associer une liste d'ingrédients à chaque plat. Les ingrédients sont
   saisis manuellement une fois par plat et réutilisés ensuite — pas
   d'intégration avec une API de supermarché.
