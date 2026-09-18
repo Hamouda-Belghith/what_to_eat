@@ -67,6 +67,19 @@ Résumé:
   persistait pas avant. Voir `.ia/decisions.md` (2026-09-18) et la
   migration `0005_nullable_planned_meal_dish.sql` (à appliquer sur la
   base de production).
+- **La question de portée (« cette semaine / le modèle ») ne se pose
+  plus que sur une case déjà remplie.** Choisir un plat pour une case
+  vide l'ajoute directement pour cette semaine-là, sans interruption —
+  même si un motif de répétition est actif. La question ne s'affiche
+  que quand on modifie ou retire un repas déjà présent (voir
+  `handlePickDish` dans `PlanningScreen.tsx`, condition
+  `repeat?.active && editingMeal`).
+- **Notification « semaine prochaine vide »** : si la semaine qui suit
+  celle d'aujourd'hui (pas celle affichée) n'a aucun repas planifié, une
+  bannière ambre s'affiche en haut du Planning, quelle que soit la
+  semaine consultée (cliquer dessus y saute directement). Vérifié à
+  chaque chargement du planning (`checkNextWeek` dans
+  `PlanningScreen.tsx`).
 
 État de la production :
 - Le frontend Vercel est prêt, mais la version “réelle” n'est pas encore

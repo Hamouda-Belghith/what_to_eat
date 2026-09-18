@@ -363,6 +363,27 @@ button {
   border-bottom-color: var(--accent-dark);
 }
 
+.week-warning-banner {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  width: 100%;
+  border: 1px solid #f0d999;
+  border-radius: var(--radius-sm);
+  background: var(--warn-soft);
+  color: var(--warn);
+  font-weight: 650;
+  font-size: 0.9rem;
+  padding: 0.65rem 0.9rem;
+  text-align: left;
+  margin-bottom: 0.75rem;
+  transition: box-shadow 0.12s ease;
+}
+
+.week-warning-banner:hover {
+  box-shadow: var(--shadow-sm);
+}
+
 .empty {
   text-align: center;
   padding: 2.5rem 1rem;

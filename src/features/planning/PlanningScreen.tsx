@@ -60,6 +60,11 @@ export function PlanningScreen() {
     undefined
   );
 
+  const [nextWeekEmpty, setNextWeekEmpty] = useState<{
+    startISO: string;
+    endISO: string;
+  } | null>(null);
+
   const weekStartISO = toISODate(weekStart);
   const weekEndISO = toISODate(addDays(weekStart, WEEK_DAYS - 1));
 
@@ -75,6 +80,25 @@ export function PlanningScreen() {
     setRepeat(repeatConfig);
     if (repeatConfig.active && repeatConfig.intervalWeeks) {
       setFrequencyInput(repeatConfig.intervalWeeks);
+    }
+    void checkNextWeek();
+  }
+
+  /**
+   * Vérifie si la semaine qui suit celle d'aujourd'hui (pas celle
+   * affichée) a au moins un repas planifié, pour prévenir l'utilisateur
+   * s'il ne l'a pas encore remplie.
+   */
+  async function checkNextWeek() {
+    const nextStart = toISODate(addDays(startOfWeek(new Date()), WEEK_DAYS));
+    const nextEnd = toISODate(addDays(parseISODate(nextStart), WEEK_DAYS - 1));
+    try {
+      const nextMeals = await fetchPlannedMeals(nextStart, nextEnd);
+      setNextWeekEmpty(
+        nextMeals.length === 0 ? { startISO: nextStart, endISO: nextEnd } : null
+      );
+    } catch {
+      // Non bloquant : une notification manquée n'empêche pas d'utiliser le planning.
     }
   }
 
@@ -225,8 +249,11 @@ export function PlanningScreen() {
   function handlePickDish(dishId: string | null) {
     if (!editingCell) return;
 
-    if (repeat?.active) {
-      // Garde le plat choisi et demande la portée dans la même modale.
+    if (repeat?.active && editingMeal) {
+      // La case a déjà un plat (issu ou non du modèle) : demande la
+      // portée du changement dans la même modale. Une case vide se
+      // remplit directement, sans cette question — elle ne peut pas
+      // « appartenir » à un modèle avant d'avoir été remplie.
       setPendingDishId(dishId);
       return;
     }
@@ -287,6 +314,18 @@ export function PlanningScreen() {
         </div>
       </div>
 
+      {nextWeekEmpty ? (
+        <button
+          type="button"
+          className="week-warning-banner"
+          onClick={() => jumpToDate(nextWeekEmpty.startISO)}
+        >
+          <span aria-hidden="true">⚠️</span>
+          La semaine prochaine (du {formatWeekRange(nextWeekEmpty.startISO, nextWeekEmpty.endISO)}
+          ) n&apos;a encore aucun repas prévu.
+        </button>
+      ) : null}
+
       <div className="card planning-toolbar">
         <div className="repeat-panel">
           <span className="repeat-panel-label">Répéter</span>
@@ -327,8 +366,9 @@ export function PlanningScreen() {
               Modèle basé sur la semaine du {formatDateLong(repeat.startDate ?? weekStartISO)},
               répété toutes les {repeat.intervalWeeks} semaine
               {(repeat.intervalWeeks ?? 1) > 1 ? "s" : ""}, visible sur les cases marquées
-              « Modèle ». Modifier une case proposera de choisir : cette semaine seulement,
-              ou le modèle pour toutes les semaines à venir.
+              « Modèle ». Modifier une case déjà remplie proposera de choisir : cette
+              semaine seulement, ou le modèle pour toutes les semaines à venir. Remplir
+              une case vide l&apos;ajoute simplement pour cette semaine-là.
             </p>
           ) : (
             <p className="repeat-hint">
