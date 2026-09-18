@@ -354,20 +354,11 @@ button {
   color: var(--muted);
 }
 
-/* ---------- Segmented control ---------- */
+/* ---------- Toggle simple (bouton Non de la répétition) ---------- */
 
-.segmented {
-  display: inline-flex;
-  padding: 0.2rem;
-  gap: 0.15rem;
-  background: var(--paper-deep);
-  border-radius: 999px;
+.repeat-off-toggle {
   border: 1px solid var(--line);
-}
-
-.segmented button {
-  border: none;
-  background: transparent;
+  background: var(--paper-deep);
   border-radius: 999px;
   padding: 0.4rem 0.85rem;
   font-weight: 600;
@@ -376,19 +367,36 @@ button {
   transition: background 0.12s ease, color 0.12s ease, box-shadow 0.12s ease;
 }
 
-.segmented button:hover:not(:disabled) {
+.repeat-off-toggle:hover:not(:disabled) {
   color: var(--ink);
 }
 
-.segmented button.active {
+.repeat-off-toggle.active {
   background: #fff;
   color: var(--accent-dark);
   box-shadow: var(--shadow-sm);
+  border-color: transparent;
 }
 
-.segmented button:disabled {
+.repeat-off-toggle:disabled {
   opacity: 0.5;
   cursor: not-allowed;
+}
+
+.repeat-frequency-row {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.6rem;
+}
+
+.repeat-frequency-input {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.4rem;
+  font-size: 0.88rem;
+  color: var(--muted);
+  font-weight: 600;
 }
 
 /* ---------- Planning (semaine) ---------- */

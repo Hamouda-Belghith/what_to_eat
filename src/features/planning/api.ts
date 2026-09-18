@@ -6,15 +6,12 @@ import {
   setDemoPlannedMeal,
   clearDemoPlannedMeal,
   applyDemoCycleToRange,
-  fetchDemoMealRepeats,
-  createDemoMealRepeat,
-  applyDemoMealRepeatsToRange,
   isDemoMode,
 } from "@/lib/localDemo";
 import { addDays, parseISODate, toISODate } from "@/lib/date";
 import type { MealSlot } from "@/lib/supabase/database.types";
 import type { MealCycle } from "@/features/cycles/types";
-import type { MealRepeat, MealRepeatDuration, PlannedMeal } from "./types";
+import type { PlannedMeal } from "./types";
 
 type Result<T> = { data: T[] | null; error: PostgrestError | null };
 type MutateResult = { error: PostgrestError | null };
@@ -25,19 +22,8 @@ interface PlannedMealRow {
   meal_slot: MealSlot;
   dish_id: string;
   meal_cycle_id: string | null;
-  meal_repeat_id: string | null;
   dishes?: { name: string; photo_url: string | null } | null;
 }
-
-interface MealRepeatRow {
-  id: string;
-  meal_slot: MealSlot;
-  dish_id: string;
-  start_date: string;
-  weeks_total: number | null;
-}
-
-const MEAL_REPEAT_FORWARD_WEEKS = 8;
 
 interface CycleRow {
   id: string;
@@ -71,7 +57,7 @@ export async function fetchPlannedMeals(
 
   const { data, error } = (await supabase
     .from("planned_meals")
-    .select("id, date, meal_slot, dish_id, meal_cycle_id, meal_repeat_id, dishes(name, photo_url)")
+    .select("id, date, meal_slot, dish_id, meal_cycle_id, dishes(name, photo_url)")
     .eq("user_id", userId)
     .gte("date", periodStart)
     .lte("date", periodEnd)) as Result<PlannedMealRow>;
@@ -89,7 +75,6 @@ export async function fetchPlannedMeals(
     dishName: row.dishes?.name ?? "",
     dishPhotoUrl: row.dishes?.photo_url ?? null,
     mealCycleId: row.meal_cycle_id,
-    mealRepeatId: row.meal_repeat_id,
   }));
 }
 
@@ -97,11 +82,10 @@ export async function setPlannedMeal(
   date: string,
   mealSlot: MealSlot,
   dishId: string,
-  mealCycleId: string | null = null,
-  mealRepeatId: string | null = null
+  mealCycleId: string | null = null
 ): Promise<void> {
   if (isDemoMode()) {
-    await setDemoPlannedMeal(date, mealSlot, dishId, mealCycleId, mealRepeatId);
+    await setDemoPlannedMeal(date, mealSlot, dishId, mealCycleId);
     return;
   }
 
@@ -118,7 +102,6 @@ export async function setPlannedMeal(
       meal_slot: mealSlot,
       dish_id: dishId,
       meal_cycle_id: mealCycleId,
-      meal_repeat_id: mealRepeatId,
     } as never,
     { onConflict: "user_id, date, meal_slot" } as never
   )) as MutateResult;
@@ -196,16 +179,20 @@ async function fetchPatternById(cycleId: string): Promise<MealCycle | null> {
 }
 
 /**
- * Remplit les cases vides d'une plage depuis un motif de répétition.
- * Les overrides manuels (cases déjà remplies) ne sont pas écrasés.
+ * Remplit les cases d'une plage depuis un motif de répétition. Par
+ * défaut, les cases déjà remplies (overrides manuels) ne sont pas
+ * écrasées ; avec `overwrite: true`, une case déjà remplie avec un
+ * plat différent de celui du motif est remplacée (utilisé après
+ * confirmation d'un chevauchement, voir `repeat.ts`).
  */
 export async function applyCycleToRange(
   cycleId: string,
   periodStart: string,
-  periodEnd: string
+  periodEnd: string,
+  overwrite = false
 ): Promise<void> {
   if (isDemoMode()) {
-    await applyDemoCycleToRange(cycleId, periodStart, periodEnd);
+    await applyDemoCycleToRange(cycleId, periodStart, periodEnd, overwrite);
     return;
   }
 
@@ -216,8 +203,8 @@ export async function applyCycleToRange(
   if (!cycle) throw new Error("Motif de répétition introuvable");
 
   const existing = await fetchPlannedMeals(periodStart, periodEnd);
-  const existingKeys = new Set(
-    existing.map((meal) => `${meal.date}-${meal.mealSlot}`)
+  const existingByKey = new Map(
+    existing.map((meal) => [`${meal.date}-${meal.mealSlot}`, meal])
   );
 
   const cycleEntriesByOffset = new Map(
@@ -233,6 +220,7 @@ export async function applyCycleToRange(
     dish_id: string;
     meal_cycle_id: string;
   }> = [];
+  const updates: Array<{ id: string; dish_id: string }> = [];
 
   const msPerDay = 24 * 60 * 60 * 1000;
   let cursor = new Date(startDate);
@@ -249,198 +237,45 @@ export async function applyCycleToRange(
       const entry = cycleEntriesByOffset.get(`${cycleOffset}-${slot}`);
       if (!entry) continue;
       const key = `${dateStr}-${slot}`;
-      if (!existingKeys.has(key)) {
+      const existingMeal = existingByKey.get(key);
+      if (!existingMeal) {
         inserts.push({
           date: dateStr,
           meal_slot: slot,
           dish_id: entry.dishId,
           meal_cycle_id: cycleId,
         });
+      } else if (overwrite && existingMeal.dishId !== entry.dishId) {
+        updates.push({ id: existingMeal.id, dish_id: entry.dishId });
       }
     }
 
     cursor = addDays(cursor, 1);
   }
 
-  if (inserts.length === 0) return;
-
   const userId = await getCurrentUserId();
   if (!userId) return;
 
-  const { error } = (await supabase
-    .from("planned_meals")
-    .insert(
-      inserts.map((insert) => ({ ...insert, user_id: userId })) as never
-    )) as MutateResult;
+  if (inserts.length > 0) {
+    const { error } = (await supabase
+      .from("planned_meals")
+      .insert(
+        inserts.map((insert) => ({ ...insert, user_id: userId })) as never
+      )) as MutateResult;
 
-  if (error) {
-    console.warn("Impossible d'appliquer le motif au planning", error);
-    throw new Error("Application du motif impossible");
-  }
-}
-
-function mapMealRepeatRow(row: MealRepeatRow): MealRepeat {
-  return {
-    id: row.id,
-    mealSlot: row.meal_slot,
-    dishId: row.dish_id,
-    startDate: row.start_date,
-    weeksTotal: (row.weeks_total as MealRepeatDuration) ?? null,
-  };
-}
-
-async function fetchMealRepeats(): Promise<MealRepeat[]> {
-  if (isDemoMode()) {
-    return fetchDemoMealRepeats();
-  }
-
-  const supabase = getSupabase();
-  if (!supabase) return [];
-
-  const userId = await getCurrentUserId();
-  if (!userId) return [];
-
-  const { data, error } = (await supabase
-    .from("meal_repeats")
-    .select("id, meal_slot, dish_id, start_date, weeks_total")
-    .eq("user_id", userId)) as Result<MealRepeatRow>;
-
-  if (error || !data) {
-    console.warn("Impossible de charger les répétitions par repas", error);
-    return [];
-  }
-  return data.map(mapMealRepeatRow);
-}
-
-/**
- * Remplit les occurrences futures des répétitions par repas (créées
- * depuis une case du planning) sur la période donnée. Contrairement au
- * motif global, chaque occurrence est une ligne indépendante : la
- * modifier ne touche que cette date.
- */
-export async function ensureMealRepeatsApplied(
-  periodStart: string,
-  periodEnd: string
-): Promise<void> {
-  if (isDemoMode()) {
-    await applyDemoMealRepeatsToRange(periodStart, periodEnd);
-    return;
-  }
-
-  const supabase = getSupabase();
-  if (!supabase) return;
-
-  const userId = await getCurrentUserId();
-  if (!userId) return;
-
-  const repeats = await fetchMealRepeats();
-  if (repeats.length === 0) return;
-
-  const existing = await fetchPlannedMeals(periodStart, periodEnd);
-  const existingKeys = new Set(existing.map((m) => `${m.date}-${m.mealSlot}`));
-
-  const start = parseISODate(periodStart);
-  const end = parseISODate(periodEnd);
-  const inserts: Array<{
-    date: string;
-    meal_slot: MealSlot;
-    dish_id: string;
-    meal_repeat_id: string;
-  }> = [];
-
-  for (const repeat of repeats) {
-    const repeatStart = parseISODate(repeat.startDate);
-    const lastDate = repeat.weeksTotal
-      ? addDays(repeatStart, (repeat.weeksTotal - 1) * 7)
-      : null;
-
-    let cursor = new Date(repeatStart);
-    while (cursor < start) cursor = addDays(cursor, 7);
-
-    while (cursor <= end) {
-      if (cursor >= repeatStart && (!lastDate || cursor <= lastDate)) {
-        const dateStr = toISODate(cursor);
-        const key = `${dateStr}-${repeat.mealSlot}`;
-        if (!existingKeys.has(key)) {
-          inserts.push({
-            date: dateStr,
-            meal_slot: repeat.mealSlot,
-            dish_id: repeat.dishId,
-            meal_repeat_id: repeat.id,
-          });
-          existingKeys.add(key);
-        }
-      }
-      cursor = addDays(cursor, 7);
+    if (error) {
+      console.warn("Impossible d'appliquer le motif au planning", error);
+      throw new Error("Application du motif impossible");
     }
   }
 
-  if (inserts.length === 0) return;
-
-  const { error } = (await supabase
-    .from("planned_meals")
-    .insert(
-      inserts.map((insert) => ({ ...insert, user_id: userId })) as never
-    )) as MutateResult;
-
-  if (error) {
-    console.warn("Impossible d'appliquer les répétitions par repas", error);
-    throw new Error("Application de la répétition impossible");
+  for (const update of updates) {
+    const { error } = (await supabase
+      .from("planned_meals")
+      .update({ dish_id: update.dish_id, meal_cycle_id: cycleId } as never)
+      .eq("id", update.id)) as MutateResult;
+    if (error) {
+      console.warn("Impossible de remplacer un repas en conflit", error);
+    }
   }
-}
-
-/**
- * Crée une répétition par repas à partir d'une case du planning et
- * matérialise ses occurrences (jusqu'à `weeksTotal` semaines, ou un
- * horizon de 8 semaines si indéfinie).
- */
-export async function createMealRepeat(params: {
-  mealSlot: MealSlot;
-  dishId: string;
-  startDate: string;
-  weeksTotal: MealRepeatDuration;
-}): Promise<MealRepeat | null> {
-  if (isDemoMode()) {
-    return createDemoMealRepeat(params);
-  }
-
-  const supabase = getSupabase();
-  if (!supabase) return null;
-
-  const userId = await getCurrentUserId();
-  if (!userId) return null;
-
-  const { data, error } = (await supabase
-    .from("meal_repeats")
-    .insert({
-      user_id: userId,
-      meal_slot: params.mealSlot,
-      dish_id: params.dishId,
-      start_date: params.startDate,
-      weeks_total: params.weeksTotal,
-    } as never)
-    .select("id, meal_slot, dish_id, start_date, weeks_total")) as Result<MealRepeatRow>;
-
-  if (error || !data?.[0]) {
-    console.warn("Impossible de créer la répétition par repas", error);
-    throw new Error("Création de la répétition impossible");
-  }
-
-  const repeat = mapMealRepeatRow(data[0]);
-
-  await setPlannedMeal(
-    repeat.startDate,
-    repeat.mealSlot,
-    repeat.dishId,
-    null,
-    repeat.id
-  );
-
-  const weeks = repeat.weeksTotal ?? MEAL_REPEAT_FORWARD_WEEKS;
-  const horizonEnd = toISODate(
-    addDays(parseISODate(repeat.startDate), weeks * 7 - 1)
-  );
-  await ensureMealRepeatsApplied(repeat.startDate, horizonEnd);
-
-  return repeat;
 }

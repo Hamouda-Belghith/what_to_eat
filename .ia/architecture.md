@@ -65,25 +65,30 @@ Tables principales :
 | `ingredients`          | Référentiel unique des ingrédients                                |
 | `dishes`               | Plats (dont `photo_url`, voir plus bas)                           |
 | `dish_ingredients`     | Composition d'un plat (ingrédient + quantité + unité)              |
-| `meal_cycles`          | Motif unique de répétition (1 ou 2 semaines), piloté depuis le Planning |
+| `meal_cycles`          | Motif unique de répétition (fréquence libre, en semaines), piloté depuis le Planning |
 | `meal_cycle_entries`   | Créneaux du motif (jour relatif + repas + plat)                        |
-| `meal_repeats`         | Répétition légère d'un repas précis (durée en semaines ou indéfinie)   |
-| `planned_meals`        | Planning calendaire réel (override possible sans casser un motif/une répétition) |
+| `planned_meals`        | Planning calendaire réel (override possible sans casser le motif)      |
 | `shopping_list_items`  | Liste de courses agrégée et persistée, cochable, source de l'offline |
 
-Point clé : un seul motif de répétition **global** par utilisateur
-(`meal_cycles`/`meal_cycle_entries`, toute la semaine). `meal_cycle_entries`
-(le **modèle**) est séparé de `planned_meals` (la **réalité calendaire**)
-pour remplir automatiquement les semaines futures tout en autorisant un
-override ponctuel (« cette semaine seulement ») sans casser la répétition.
+Point clé : un seul motif de répétition par utilisateur
+(`meal_cycles`/`meal_cycle_entries`), avec une fréquence libre en
+nombre de semaines (`meal_cycles.duration_days`, saisie via un champ
+numérique « toutes les N semaines » — voir `.ia/decisions.md`
+2026-09-18). `meal_cycle_entries` (le **modèle**) est séparé de
+`planned_meals` (la **réalité calendaire**) pour remplir automatiquement
+les semaines futures tout en autorisant un override ponctuel (« cette
+semaine seulement ») sans casser la répétition.
 
-En complément, `meal_repeats` porte une répétition **par repas** (un
-seul créneau, pas toute la semaine), déclenchée directement depuis une
-case du planning avec une durée (3 semaines, 4 semaines, ou indéfinie).
-`planned_meals.meal_repeat_id` relie chaque occurrence matérialisée à
-sa règle. Contrairement au motif global, modifier une occurrence
-n'affecte que cette date — pas de propagation ni de choix de portée.
-Voir `.ia/decisions.md` (2026-09-18) et `src/features/planning/api.ts`.
+Avant d'activer ou de changer la fréquence, `findRepeatConflicts`
+(`src/features/planning/repeat.ts`) détecte les repas déjà planifiés à
+la main dans les semaines à venir qui entreraient en conflit avec la
+nouvelle fréquence, et demande confirmation avant de les remplacer
+(`applyCycleToRange`/`applyDemoCycleToRange` acceptent un paramètre
+`overwrite` pour ce cas précis).
+
+Un seul mécanisme de répétition existe (pas de répétition par repas
+séparée — une tentative en ce sens a été retirée, voir
+`.ia/decisions.md` 2026-09-18).
 
 **Photo de plat** : `dishes.photo_url` stocke l'URL publique d'un
 fichier dans le bucket Supabase Storage `dish-photos` (policies RLS :

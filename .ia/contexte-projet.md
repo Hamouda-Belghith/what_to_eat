@@ -19,15 +19,15 @@ accueillir d'autres foyers pour l'instant.
 
 - Créer un planning de repas pour chaque jour, avec distinction entre
   petit-déjeuner, déjeuner et dîner.
-- Rendre une semaine (ou une quinzaine) répétitive depuis le Planning :
-  « chaque semaine » ou « toutes les 2 semaines ». Pas d'onglet ni de
-  ressource « Cycles » séparée — la répétition est un paramètre du
-  planning. Lors d'une modification, choisir entre cette semaine
-  seulement ou toutes les semaines futures.
-- Répéter un repas précis (pas toute la semaine) directement depuis sa
-  case du planning, pour une durée choisie (3 semaines, 4 semaines, ou
-  indéfiniment). Modifier une occurrence ne concerne que cette
-  semaine-là, sans question de portée à chaque fois.
+- Rendre une semaine répétitive depuis le Planning, avec une fréquence
+  libre choisie par l'utilisateur (« toutes les N semaines », pas
+  seulement 1 ou 2). Pas d'onglet ni de ressource « Cycles » séparée —
+  la répétition est un paramètre du planning. Lors d'une modification
+  d'un repas précis, choisir entre cette semaine seulement ou le modèle
+  pour toutes les semaines à venir. Si des repas sont déjà planifiés à
+  la main sur des semaines à venir et entrent en conflit avec la
+  fréquence choisie, l'utilisateur en est averti avant de valider (pour
+  changer de fréquence, ou confirmer le remplacement).
 - Associer une photo (optionnelle) à un plat, visible sur sa fiche et
   sur les cases du planning où il est prévu.
 - Associer une liste d'ingrédients à chaque plat. Les ingrédients sont

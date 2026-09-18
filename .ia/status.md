@@ -7,8 +7,8 @@ Résumé:
 - Le frontend a été **déployé sur Vercel** avec une URL de production.
 - Un **mode démo local** reste disponible si les variables Supabase ne sont
   pas définies.
-- **Plus d'onglet Cycles** : la répétition est un paramètre du Planning
-  (chaque semaine / toutes les 2 semaines). Voir `decisions.md`.
+- **Plus d'onglet Cycles** : la répétition est un paramètre du Planning,
+  avec une fréquence libre (« toutes les N semaines »). Voir `decisions.md`.
 - **Recherche de plats** : un champ de recherche filtre la liste des plats
   par nom/description côté client, sur l'écran Plats
   (`src/features/dishes/DishesScreen.tsx`). Filtrage simple en mémoire,
@@ -24,15 +24,20 @@ Résumé:
   et sur les cases du planning. Stockée dans Supabase Storage (bucket
   `dish-photos`) en prod, en base64 dans `localStorage` en mode démo.
   Voir `.ia/decisions.md` (2026-09-18) et la migration
-  `supabase/migrations/0004_dish_photos_and_meal_repeats.sql` (à
-  appliquer sur la base de production).
-- **Répétition par repas** : en plus du motif global existant, un repas
-  peut désormais se répéter chaque semaine pour une durée choisie (3
-  semaines, 4 semaines, indéfiniment) directement depuis une case vide
-  du planning. Modifier une occurrence ne change que cette date, sans
-  question de portée. Voir `.ia/decisions.md` (2026-09-18),
-  `src/features/planning/api.ts` (`createMealRepeat`,
-  `ensureMealRepeatsApplied`) et la même migration `0004`.
+  `supabase/migrations/0004_dish_photos.sql` (à appliquer sur la base
+  de production).
+- **Fréquence de répétition libre + détection de chevauchement** : la
+  barre « Répéter » du Planning accepte n'importe quel nombre de
+  semaines (pas seulement 1 ou 2), via un champ numérique. Avant
+  d'activer/changer la fréquence, l'app détecte les repas déjà
+  planifiés à la main qui entrent en conflit avec la nouvelle fréquence
+  et demande confirmation avant de les remplacer. Voir `.ia/decisions.md`
+  (2026-09-18) et `src/features/planning/repeat.ts`
+  (`findRepeatConflicts`). Pas de migration nécessaire.
+  Note : une tentative précédente avait ajouté un mécanisme de
+  répétition « par repas » séparé (table `meal_repeats`) — retiré à la
+  demande de l'utilisateur, un seul mécanisme de répétition (le motif
+  global) est conservé.
 
 État de la production :
 - Le frontend Vercel est prêt, mais la version “réelle” n'est pas encore
@@ -41,8 +46,7 @@ Résumé:
   `NEXT_PUBLIC_SUPABASE_ANON_KEY`.
 - Appliquer les migrations SQL (`0001_init.sql`, et le cas échéant
   `0002_user_scoping.sql`, `0003_single_repeat_pattern.sql`,
-  `0004_dish_photos_and_meal_repeats.sql`) sur la base Supabase de
-  production.
+  `0004_dish_photos.sql`) sur la base Supabase de production.
 - L'authentification email Supabase doit être vérifiée si les utilisateurs
   doivent créer des comptes depuis la version déployée.
 

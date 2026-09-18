@@ -8,15 +8,4 @@ export interface PlannedMeal {
   dishName: string;
   dishPhotoUrl: string | null;
   mealCycleId: string | null;
-  mealRepeatId: string | null;
-}
-
-export type MealRepeatDuration = 3 | 4 | null;
-
-export interface MealRepeat {
-  id: string;
-  mealSlot: MealSlot;
-  dishId: string;
-  startDate: string;
-  weeksTotal: MealRepeatDuration;
 }

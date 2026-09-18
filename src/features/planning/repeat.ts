@@ -18,7 +18,8 @@ import {
   setPlannedMeal,
 } from "./api";
 
-export type RepeatInterval = 1 | 2;
+/** Fréquence de répétition, en nombre de semaines (1 = chaque semaine, 3 = toutes les 3 semaines, etc). */
+export type RepeatInterval = number;
 export type MealEditScope = "this_week" | "all_future";
 
 export interface RepeatConfig {
@@ -48,11 +49,11 @@ interface EntryRow {
 }
 
 function intervalFromDuration(durationDays: number): RepeatInterval {
-  return durationDays >= 14 ? 2 : 1;
+  return Math.max(1, Math.round(durationDays / 7));
 }
 
 function durationFromInterval(intervalWeeks: RepeatInterval): number {
-  return intervalWeeks * 7;
+  return Math.max(1, Math.floor(intervalWeeks)) * 7;
 }
 
 function dayOffsetForDate(
@@ -257,24 +258,76 @@ async function deletePattern(): Promise<void> {
   }
 }
 
-async function applyForward(patternId: string, fromISO: string): Promise<void> {
+async function applyForward(
+  patternId: string,
+  fromISO: string,
+  overwrite = false
+): Promise<void> {
   const periodEnd = toISODate(
     addDays(parseISODate(fromISO), FORWARD_WEEKS * 7 - 1)
   );
   if (isDemoMode()) {
-    await applyDemoCycleToRange(patternId, fromISO, periodEnd);
+    await applyDemoCycleToRange(patternId, fromISO, periodEnd, overwrite);
     return;
   }
-  await applyCycleToRange(patternId, fromISO, periodEnd);
+  await applyCycleToRange(patternId, fromISO, periodEnd, overwrite);
+}
+
+export interface RepeatConflict {
+  date: string;
+  mealSlot: MealSlot;
+  dishName: string;
+}
+
+/**
+ * Repère les repas déjà planifiés (dans l'horizon de remplissage
+ * futur) qui ne correspondent pas à ce que la fréquence choisie y
+ * placerait. Sert à prévenir l'utilisateur avant d'activer/changer la
+ * fréquence, plutôt que de silencieusement ignorer ces cases.
+ */
+export async function findRepeatConflicts(
+  weekStartISO: string,
+  intervalWeeks: RepeatInterval
+): Promise<RepeatConflict[]> {
+  const durationDays = durationFromInterval(intervalWeeks);
+  const entries = await snapshotEntries(weekStartISO, intervalWeeks);
+  if (entries.length === 0) return [];
+
+  const entriesByOffset = new Map(
+    entries.map((e) => [`${e.dayOffset}-${e.mealSlot}`, e])
+  );
+
+  const scanStart = toISODate(addDays(parseISODate(weekStartISO), durationDays));
+  const scanEnd = toISODate(
+    addDays(parseISODate(weekStartISO), FORWARD_WEEKS * 7 - 1)
+  );
+  if (scanStart > scanEnd) return [];
+
+  const existing = await fetchPlannedMeals(scanStart, scanEnd);
+  const conflicts: RepeatConflict[] = [];
+
+  for (const meal of existing) {
+    const offset = dayOffsetForDate(meal.date, weekStartISO, durationDays);
+    const entry = entriesByOffset.get(`${offset}-${meal.mealSlot}`);
+    if (entry && entry.dishId !== meal.dishId) {
+      conflicts.push({ date: meal.date, mealSlot: meal.mealSlot, dishName: meal.dishName });
+    }
+  }
+
+  return conflicts;
 }
 
 /**
  * Active, met à jour ou désactive la répétition à partir de la semaine visible.
- * intervalWeeks null = arrêter. Sinon snapshot la semaine (ou 2) et matérialise.
+ * intervalWeeks null = arrêter. Sinon snapshot la ou les semaines couvertes
+ * par la fréquence et matérialise. `overwrite` remplace les repas déjà
+ * planifiés qui entrent en conflit avec la fréquence (voir `findRepeatConflicts`) ;
+ * sans cette option, ces cases restent inchangées.
  */
 export async function setRepeatInterval(
   intervalWeeks: RepeatInterval | null,
-  weekStartISO: string
+  weekStartISO: string,
+  overwrite = false
 ): Promise<RepeatConfig> {
   if (intervalWeeks === null) {
     await deletePattern();
@@ -302,7 +355,7 @@ export async function setRepeatInterval(
     await setPlannedMeal(date, entry.mealSlot, entry.dishId, pattern.id);
   }
 
-  await applyForward(pattern.id, weekStartISO);
+  await applyForward(pattern.id, weekStartISO, overwrite);
   return getRepeatConfig();
 }
 

@@ -6,54 +6,53 @@ haut du fichier (ordre antéchronologique).
 
 ---
 
-## 2026-09-18 — Répétition par repas (en plus du motif global)
+## 2026-09-18 — Fréquence libre du motif global + détection de chevauchement
 
-**Contexte** : le motif de répétition global (voir décision du
-2026-08-05) répète toute la semaine et ne permet pas de dire « ce seul
-repas se répète 3 semaines » facilement, ni de comprendre clairement
-ce qui se passe en le modifiant. Retour utilisateur : pas assez clair,
-et besoin de répéter un repas précis (pas toute la semaine) pour une
-durée choisie (3, 4 semaines, ou indéfiniment), avec une modification
-« juste cette semaine » simple, sans les deux options « cette semaine
-seulement / toutes les semaines futures » du motif global.
+**Contexte** : une première itération avait ajouté un second mécanisme
+de répétition « par repas » (table `meal_repeats`, déclenché depuis une
+case vide du planning). Retour utilisateur : ce n'est pas ce qui était
+voulu — un seul mécanisme doit exister, celui du motif global, mais
+avec une fréquence libre (« tous les combien de semaines », pas
+seulement 1 ou 2) plutôt que deux boutons fixes. Le mécanisme
+`meal_repeats` (table, colonne `planned_meals.meal_repeat_id`, étape de
+choix de durée depuis une case vide) a donc été entièrement retiré au
+profit de cette décision.
 
-**Décision** : ajouter un second mécanisme de répétition, plus léger,
-en plus du motif global (les deux coexistent) :
-- Nouvelle table `meal_repeats` (repas + jour de départ + nombre de
-  semaines, `null` = indéfiniment). Cadence fixe : chaque semaine
-  (pas de « toutes les 2 semaines » pour ce mécanisme).
-- `planned_meals.meal_repeat_id` (nullable, indépendant de
-  `meal_cycle_id`) relie chaque occurrence matérialisée à sa règle.
-- Déclenché directement depuis une case vide du planning : après avoir
-  choisi un plat, une étape propose Une seule fois / 3 semaines /
-  4 semaines / Indéfiniment.
-- Contrairement au motif global, chaque occurrence matérialisée est une
-  ligne indépendante : modifier une case déjà remplie (qu'elle vienne
-  du motif global ou d'une répétition par repas) est un simple
-  remplacement de cette date, sans question de portée — sauf si le
-  motif global est actif, auquel cas son flux « cette semaine / toutes
-  les semaines futures » prend le pas (pour ne pas avoir deux systèmes
-  de portée dans la même interaction).
-- Clarté ajoutée sur l'existant : le badge générique « répété » devient
-  « Modèle » (motif global, avec infobulle expliquant le comportement)
-  ou « Répété » (répétition par repas, avec infobulle). La barre
-  « Répéter » affiche désormais la date de la semaine qui sert de
-  modèle.
+**Décision** :
+- `meal_cycles.duration_days` acceptait déjà n'importe quel entier ; le
+  code applicatif limitait artificiellement le choix à 1 ou 2 semaines
+  (`RepeatInterval = 1 | 2`). Généralisé en `RepeatInterval = number`
+  (entier positif, nombre de semaines). Aucune migration nécessaire.
+- La barre « Répéter » du planning remplace les 3 boutons fixes par :
+  bouton « Non », un champ numérique « Toutes les ⟨N⟩ semaine(s) », et
+  un bouton « Activer »/« Mettre à jour ». Le motif est toujours
+  snapshotté depuis la semaine visible (sur `N` semaines) puis répété
+  indéfiniment, comme avant.
+- Le badge « Modèle » (renommé depuis « répété » pour plus de clarté)
+  et le rappel de la semaine de référence dans le panneau restent
+  inchangés — ils s'appliquent à ce seul mécanisme désormais.
+- **Détection de chevauchement** : avant d'activer/changer la
+  fréquence, `findRepeatConflicts` (dans `repeat.ts`) scanne les
+  semaines à venir (horizon de remplissage, 8 semaines) et repère les
+  repas déjà planifiés à la main qui ne correspondent pas à ce que la
+  nouvelle fréquence y placerait (même case, plat différent). S'il y en
+  a, une confirmation liste les conflits (date, repas, plat) et demande
+  à l'utilisateur de choisir une autre fréquence, ou de continuer pour
+  les remplacer par le motif. `applyCycleToRange`/`applyDemoCycleToRange`
+  reçoivent un paramètre `overwrite` pour ce cas précis (par défaut
+  `false`, les cases déjà remplies ne sont jamais écrasées silencieusement).
 
-**Alternatives écartées** :
-- Étendre le motif global pour supporter une durée limitée par plat :
-  rejeté, le motif global reste volontairement une répétition de toute
-  la semaine (décision du 2026-08-05), mélanger les deux logiques
-  aurait complexifié `meal_cycles`/`meal_cycle_entries` sans bénéfice
-  clair.
-- Cadence « toutes les 2 semaines » pour la répétition par repas :
-  écartée pour rester simple (une seule cadence, une seule question à
-  se poser au moment de répéter un repas).
+**Pourquoi pas de mécanisme séparé par repas** : un seul système de
+répétition est plus facile à expliquer et à maintenir en tête pour un
+usage à 2 personnes ; la fréquence libre couvre le besoin exprimé
+(« tous les combien de semaines ») sans dupliquer la logique de
+motif/snapshot/propagation déjà en place pour `meal_cycles`.
 
-**Réversibilité** : mécanisme additif (nouvelle table + colonne
-nullable), n'affecte pas le motif global existant.
-
-**Migration** : `supabase/migrations/0004_dish_photos_and_meal_repeats.sql`.
+**Migration** : aucune (le schéma supportait déjà une fréquence libre).
+Le fichier `supabase/migrations/0004_dish_photos_and_meal_repeats.sql`
+de la tentative précédente a été renommé
+`supabase/migrations/0004_dish_photos.sql` et ne contient plus que
+l'ajout de la photo de plat (voir décision suivante).
 
 ---
 
@@ -82,7 +81,7 @@ base64 volumineux. Le mode démo garde une solution plus simple
   remplacée ou retirée, pour ne pas accumuler des fichiers orphelins
   dans le bucket au fil du temps.
 
-**Migration** : `supabase/migrations/0004_dish_photos_and_meal_repeats.sql`.
+**Migration** : `supabase/migrations/0004_dish_photos.sql`.
 
 ---
 
