@@ -29,6 +29,7 @@ function EmptyIngredientRow(): DishIngredient {
 export function DishesScreen() {
   const [dishes, setDishes] = useState<Dish[] | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [search, setSearch] = useState("");
 
   const [creating, setCreating] = useState(false);
   const [editing, setEditing] = useState<Dish | null>(null);
@@ -108,6 +109,19 @@ export function DishesScreen() {
     );
   }
 
+  const normalizedSearch = search.trim().toLowerCase();
+  const filteredDishes =
+    dishes === null
+      ? null
+      : normalizedSearch === ""
+      ? dishes
+      : dishes.filter((dish) =>
+          [dish.name, dish.description ?? ""]
+            .join(" ")
+            .toLowerCase()
+            .includes(normalizedSearch)
+        );
+
   return (
     <div className="screen">
       <div className="row-spread" style={{ marginBottom: "0.25rem" }}>
@@ -124,16 +138,32 @@ export function DishesScreen() {
         <p style={{ color: "var(--danger)", fontWeight: 700 }}>{error}</p>
       ) : null}
 
-      {dishes === null ? (
+      {dishes !== null && dishes.length > 0 ? (
+        <input
+          type="search"
+          className="input"
+          placeholder="Rechercher un plat…"
+          aria-label="Rechercher un plat"
+          value={search}
+          onChange={(e) => setSearch(e.target.value)}
+          style={{ marginBottom: "0.75rem" }}
+        />
+      ) : null}
+
+      {filteredDishes === null ? (
         <Spinner />
-      ) : dishes.length === 0 ? (
+      ) : dishes && dishes.length === 0 ? (
         <div className="card empty">
           Aucun plat pour l'instant. Crée ton premier plat avec le bouton
           « + Nouveau plat ».
         </div>
+      ) : filteredDishes.length === 0 ? (
+        <div className="card empty">
+          Aucun plat ne correspond à « {search} ».
+        </div>
       ) : (
         <div className="grid">
-          {dishes.map((dish) => (
+          {filteredDishes.map((dish) => (
             <div key={dish.id} className="card">
               <div className="row-spread">
                 <div>

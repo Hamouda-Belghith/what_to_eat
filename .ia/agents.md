@@ -109,6 +109,8 @@ Voir `decisions.md` pour le détail et les alternatives déjà écartées.
 - `README.md` — vue d'ensemble et mise en route.
 - `.ia/contexte-projet.md` — besoin fonctionnel.
 - `.ia/architecture.md` — architecture technique détaillée.
+- `.ia/workflow-ia.md` — procédure de mise à jour du dossier `.ia/`
+  après chaque fonctionnalité.
 - `decisions.md` — historique des choix techniques et pourquoi.
 - `supabase/migrations/` — schéma de base de données, source de vérité
   du modèle de données.
@@ -119,3 +121,8 @@ Toute décision structurante (choix de librairie, changement de schéma,
 nouvelle contrainte produit) doit être ajoutée à `decisions.md` au
 moment où elle est prise, pas après coup. Si le périmètre fonctionnel
 change, mettre à jour `.ia/contexte-projet.md` en conséquence.
+
+**Après chaque fonctionnalité développée, le dossier `.ia/` doit être
+mis à jour avant de considérer la tâche terminée.** Voir
+`.ia/workflow-ia.md` pour la procédure détaillée (quel fichier mettre
+à jour, et quand).

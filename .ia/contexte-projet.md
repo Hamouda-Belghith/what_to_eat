@@ -34,6 +34,9 @@ accueillir d'autres foyers pour l'instant.
   faire les courses (liste de courses cochable).
 - La liste de courses doit être consultable et modifiable hors-ligne
   (usage typique : au supermarché, sans réseau).
+- Rechercher un plat par son nom (ou sa description) depuis l'écran
+  Plats, pour retrouver rapidement une recette au fur et à mesure que
+  la liste s'agrandit.
 
 ## Contraintes
 

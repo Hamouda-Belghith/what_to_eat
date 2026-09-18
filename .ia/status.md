@@ -1,6 +1,6 @@
 # État actuel du projet (résumé rapide)
 
-Date: 2026-08-05
+Date: 2026-09-18
 
 Résumé:
 - L'application compile et le build Next.js fonctionne (`npm run build`).
@@ -9,6 +9,11 @@ Résumé:
   pas définies.
 - **Plus d'onglet Cycles** : la répétition est un paramètre du Planning
   (chaque semaine / toutes les 2 semaines). Voir `decisions.md`.
+- **Recherche de plats** : un champ de recherche filtre la liste des plats
+  par nom/description côté client, sur l'écran Plats
+  (`src/features/dishes/DishesScreen.tsx`). Filtrage simple en mémoire,
+  pas de recherche côté serveur (nombre de plats attendu faible pour 2
+  utilisateurs).
 
 État de la production :
 - Le frontend Vercel est prêt, mais la version “réelle” n'est pas encore
