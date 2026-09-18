@@ -11,6 +11,7 @@ import {
   toISODate,
   formatDateShort,
   formatDateLong,
+  formatWeekRange,
 } from "@/lib/date";
 import type { MealSlot } from "@/lib/supabase/database.types";
 import type { Dish } from "@/features/dishes/types";
@@ -275,26 +276,14 @@ export function PlanningScreen() {
       <div className="screen-header">
         <div>
           <h1 style={{ margin: 0 }}>Planning</h1>
-          <p className="screen-kicker">
-            Semaine du {formatDateLong(weekStartISO)}
-          </p>
-        </div>
-        <div className="week-nav">
-          <Button variant="ghost" onClick={currentWeek}>
-            Aujourd&apos;hui
-          </Button>
-          <label className="week-jump">
-            <span aria-hidden="true">📅</span>
-            <input
-              type="date"
-              className="week-jump-input"
-              value={weekStartISO}
-              disabled={busy}
-              onChange={(e) => jumpToDate(e.target.value)}
-              aria-label="Aller directement à la semaine d'une date (pour sauter plusieurs semaines)"
-              title="Aller directement à une semaine précise"
-            />
-          </label>
+          <button
+            type="button"
+            className="screen-kicker screen-kicker-button"
+            onClick={currentWeek}
+            title="Revenir à la semaine d'aujourd'hui"
+          >
+            Semaine du {formatWeekRange(weekStartISO, weekEndISO)}
+          </button>
         </div>
       </div>
 
@@ -380,6 +369,19 @@ export function PlanningScreen() {
           {hint}
         </p>
       ) : null}
+
+      <label className="week-calendar-bar">
+        <span aria-hidden="true">📅</span>
+        <input
+          type="date"
+          className="week-calendar-input"
+          value={weekStartISO}
+          disabled={busy}
+          onChange={(e) => jumpToDate(e.target.value)}
+          aria-label="Aller directement à la semaine d'une date (pour sauter plusieurs semaines)"
+          title="Aller directement à une semaine précise"
+        />
+      </label>
 
       <div className="week-grid-row">
         <button

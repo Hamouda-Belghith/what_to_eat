@@ -44,14 +44,19 @@ Résumé:
   répétition. Nécessite `planned_meals.dish_id` nullable (voir migration
   ci-dessous) pour fonctionner correctement sur les cases issues du
   motif.
-- **Navigation entre semaines revue** : les flèches précédent/suivant
-  sont désormais collées aux extrémités gauche/droite du tableau du
-  planning (plus intuitif : elles font défiler *ce tableau*), au lieu
-  d'être regroupées dans l'en-tête avec « Aujourd'hui ». L'en-tête ne
-  garde que « Aujourd'hui » et un `<input type="date">` (icône 📅) pour
-  sauter directement à une semaine éloignée (dans 3-4 semaines, etc.),
-  sans passer par les flèches. Voir `src/features/planning/PlanningScreen.tsx`
-  (`.week-grid-row` / `.week-edge-nav`) et `globals.css`.
+- **Navigation entre semaines, v2** : les flèches précédent/suivant sont
+  collées aux extrémités gauche/droite du tableau du planning (plus
+  grandes, 3.2rem, pour rester bien visibles) — elles font défiler *ce
+  tableau*. Juste au-dessus du tableau, une barre calendrier
+  (`<input type="date">`, icône 📅) au même style que les cases du
+  tableau (bordure/radius/fond identiques) permet de sauter directement
+  à une semaine éloignée. Le bouton « Aujourd'hui » a été retiré : le
+  texte sous le titre (« Semaine du 14 au 20 septembre » — plage
+  complète, via `formatWeekRange` dans `lib/date.ts`) fait maintenant
+  aussi office de bouton « retour à aujourd'hui » au clic. Voir
+  `src/features/planning/PlanningScreen.tsx` (`.week-calendar-bar`,
+  `.week-grid-row`, `.week-edge-nav`, `.screen-kicker-button`) et
+  `globals.css`.
 - **Correctif important : repas planifié "vide" (`dish_id` nullable)** —
   `planned_meals.dish_id` peut désormais être `null`, ce qui représente
   une case explicitement vidée par l'utilisateur (empêche le motif de

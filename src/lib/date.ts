@@ -66,6 +66,21 @@ export function formatDateLong(iso: string): string {
   });
 }
 
+/** Ex : "14 au 20 septembre", ou "29 septembre au 5 octobre" si le mois change. */
+export function formatWeekRange(startISO: string, endISO: string): string {
+  const start = parseISODate(startISO);
+  const end = parseISODate(endISO);
+  const sameMonth =
+    start.getMonth() === end.getMonth() && start.getFullYear() === end.getFullYear();
+
+  const endLabel = end.toLocaleDateString("fr-FR", { day: "numeric", month: "long" });
+  if (sameMonth) {
+    return `${start.getDate()} au ${endLabel}`;
+  }
+  const startLabel = start.toLocaleDateString("fr-FR", { day: "numeric", month: "long" });
+  return `${startLabel} au ${endLabel}`;
+}
+
 /** Formate un nombre de quantité en évitant les décimales inutiles (2.5, 200...). */
 export function formatQuantity(n: number): string {
   if (Number.isInteger(n)) return String(n);

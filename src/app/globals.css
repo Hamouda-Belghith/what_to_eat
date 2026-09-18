@@ -348,6 +348,21 @@ button {
   font-size: 0.92rem;
 }
 
+.screen-kicker-button {
+  border: none;
+  background: transparent;
+  padding: 0;
+  font: inherit;
+  text-align: left;
+  border-bottom: 1px dashed transparent;
+  cursor: pointer;
+}
+
+.screen-kicker-button:hover {
+  color: var(--accent-dark);
+  border-bottom-color: var(--accent-dark);
+}
+
 .empty {
   text-align: center;
   padding: 2.5rem 1rem;
@@ -412,52 +427,42 @@ button {
   border-top: 1px dashed var(--line);
 }
 
-.week-nav {
-  display: inline-flex;
+/* ---------- Calendrier + navigation du planning, cohérents avec le tableau ---------- */
+
+.week-calendar-bar {
+  display: flex;
   align-items: center;
-  gap: 0.25rem;
-  background: var(--card);
+  justify-content: center;
+  gap: 0.5rem;
   border: var(--border);
-  border-radius: 999px;
-  padding: 0.15rem;
+  border-radius: var(--radius-sm);
+  background: var(--card);
+  padding: 0.55rem;
+  margin-bottom: 0.6rem;
+  cursor: pointer;
+  transition: border-color 0.12s ease, box-shadow 0.12s ease;
+}
+
+.week-calendar-bar:hover {
+  border-color: #9ccbb4;
   box-shadow: var(--shadow-sm);
 }
 
-.week-nav .btn {
-  box-shadow: none;
-  border: none;
-}
-
-.week-jump {
-  display: inline-flex;
-  align-items: center;
-  gap: 0.35rem;
-  padding: 0.4rem 0.7rem 0.4rem 0.55rem;
-  border-radius: 999px;
-  cursor: pointer;
-  font-size: 0.9rem;
-}
-
-.week-jump:hover {
-  background: var(--paper-deep);
-}
-
-.week-jump-input {
+.week-calendar-input {
   border: none;
   background: transparent;
   padding: 0;
   font: inherit;
-  font-size: 0.85rem;
+  font-size: 0.92rem;
+  font-weight: 600;
   color: var(--ink);
   cursor: pointer;
 }
 
-/* ---------- Navigation aux extrémités du tableau du planning ---------- */
-
 .week-grid-row {
   display: flex;
   align-items: center;
-  gap: 0.5rem;
+  gap: 0.6rem;
 }
 
 .week-grid-row .week-grid {
@@ -467,13 +472,13 @@ button {
 
 .week-edge-nav {
   flex-shrink: 0;
-  width: 2.4rem;
-  height: 2.4rem;
+  width: 3.2rem;
+  height: 3.2rem;
   border-radius: 999px;
   border: var(--border);
   background: var(--card);
   color: var(--accent-dark);
-  font-size: 1.3rem;
+  font-size: 1.9rem;
   font-weight: 700;
   line-height: 1;
   box-shadow: var(--shadow-sm);
@@ -482,7 +487,7 @@ button {
 
 .week-edge-nav:hover:not(:disabled) {
   background: var(--accent-soft);
-  transform: scale(1.05);
+  transform: scale(1.06);
 }
 
 .week-edge-nav:disabled {
