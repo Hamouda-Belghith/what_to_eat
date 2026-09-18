@@ -71,6 +71,24 @@ Agir comme un développeur senior full-stack et architecte logiciel.
 - Ne pas renommer, déplacer ou restructurer du code sans lien avec la
   tâche demandée.
 
+## Migrations SQL (`supabase/migrations/`)
+
+- **Une migration déjà créée ne se modifie pas.** Une fois un fichier
+  `NNNN_xxx.sql` ajouté au dépôt, il est considéré comme figé — même
+  s'il n'a pas encore été appliqué à la base de production. Pour
+  corriger ou compléter un schéma, créer un **nouveau** fichier
+  `NNNN+1_xxx.sql` qui modifie ce qu'il faut (`alter table`, etc.),
+  jamais éditer un fichier existant.
+- Exception : si une migration vient d'être ajoutée **dans la même
+  tâche, avant tout commit et avant d'avoir été signalée comme prête à
+  appliquer**, elle peut encore être ajustée (on est en train de
+  l'écrire, pas de la corriger après coup). Dès que la tâche est
+  terminée / commitée, elle passe en figé.
+- Raison : les migrations sont une séquence appliquée dans l'ordre sur
+  la base réelle. Modifier un fichier déjà exécuté (ou que l'utilisateur
+  croit déjà exécuté) désynchronise le schéma réel de l'historique du
+  dépôt, sans que rien ne le signale.
+
 ## Contraintes produit à respecter (ne pas remettre en cause sans le signaler)
 
 - **Usage privé, 2 utilisateurs** (un couple). Pas de gestion multi-

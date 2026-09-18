@@ -56,7 +56,10 @@ et `features/auth/localAuth.ts` pour les détails d'implémentation.
 
 ## Schéma de base de données
 
-Voir `supabase/migrations/0001_init.sql` pour le DDL complet.
+Voir `supabase/migrations/0001_init.sql` pour le DDL complet. Les
+fichiers de migration sont figés une fois créés : toute évolution de
+schéma passe par un nouveau fichier, jamais une édition d'un fichier
+existant (voir `.ia/agents.md`, section « Migrations SQL »).
 
 Tables principales :
 
