@@ -1,0 +1,14 @@
+-- Permet un repas planifié "vide" (dish_id null), utilisé comme
+-- marqueur explicite de suppression pour une case couverte par le
+-- motif de répétition actif.
+--
+-- Sans ce marqueur, "retirer" une case pour "cette semaine seulement"
+-- pendant qu'un motif de répétition est actif ne fonctionnait pas
+-- durablement : la ligne était supprimée, puis `ensurePatternApplied`
+-- (appelé à chaque chargement du planning) la recréait aussitôt car
+-- l'emplacement (date + repas) redevenait "vide" du point de vue du
+-- motif. Désormais, une ligne à dish_id null occupe l'emplacement sans
+-- représenter de vrai repas : elle empêche le motif de le remplir à
+-- nouveau, et est filtrée avant d'atteindre l'UI (elle s'affiche comme
+-- une case vide).
+alter table planned_meals alter column dish_id drop not null;

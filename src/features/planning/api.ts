@@ -3,8 +3,10 @@ import { getCurrentUserId, getSupabase } from "@/lib/supabase/client";
 import {
   fetchDemoMealCycles,
   fetchDemoPlannedMeals,
+  fetchDemoOccupiedSlots,
   setDemoPlannedMeal,
   clearDemoPlannedMeal,
+  clearAllDemoPlannedMeals,
   applyDemoCycleToRange,
   isDemoMode,
 } from "@/lib/localDemo";
@@ -20,9 +22,16 @@ interface PlannedMealRow {
   id: string;
   date: string;
   meal_slot: MealSlot;
-  dish_id: string;
+  dish_id: string | null;
   meal_cycle_id: string | null;
   dishes?: { name: string; photo_url: string | null } | null;
+}
+
+interface OccupiedSlot {
+  id: string;
+  date: string;
+  mealSlot: MealSlot;
+  dishId: string | null;
 }
 
 interface CycleRow {
@@ -67,21 +76,70 @@ export async function fetchPlannedMeals(
     return [];
   }
 
+  // dish_id null = case explicitement vidée (voir setMealWithScope) : ne
+  // représente pas un vrai repas, on la cache de tout le reste de l'app.
+  return data
+    .filter((row): row is PlannedMealRow & { dish_id: string } => row.dish_id !== null)
+    .map((row) => ({
+      id: row.id,
+      date: row.date,
+      mealSlot: row.meal_slot,
+      dishId: row.dish_id,
+      dishName: row.dishes?.name ?? "",
+      dishPhotoUrl: row.dishes?.photo_url ?? null,
+      mealCycleId: row.meal_cycle_id,
+    }));
+}
+
+/**
+ * Emplacements (date + repas) occupés sur la période, dish_id inclus
+ * même s'il est `null` (case explicitement vidée). Sert uniquement à
+ * `applyCycleToRange` pour savoir où NE PAS réappliquer le motif —
+ * contrairement à `fetchPlannedMeals`, qui cache ces cases vidées.
+ */
+async function fetchOccupiedSlots(
+  periodStart: string,
+  periodEnd: string
+): Promise<OccupiedSlot[]> {
+  if (isDemoMode()) {
+    return fetchDemoOccupiedSlots(periodStart, periodEnd);
+  }
+
+  const supabase = getSupabase();
+  if (!supabase) return [];
+
+  const userId = await getCurrentUserId();
+  if (!userId) return [];
+
+  const { data, error } = (await supabase
+    .from("planned_meals")
+    .select("id, date, meal_slot, dish_id")
+    .eq("user_id", userId)
+    .gte("date", periodStart)
+    .lte("date", periodEnd)) as Result<{
+    id: string;
+    date: string;
+    meal_slot: MealSlot;
+    dish_id: string | null;
+  }>;
+
+  if (error || !data) {
+    console.warn("Impossible de charger les emplacements occupés", error);
+    return [];
+  }
+
   return data.map((row) => ({
     id: row.id,
     date: row.date,
     mealSlot: row.meal_slot,
     dishId: row.dish_id,
-    dishName: row.dishes?.name ?? "",
-    dishPhotoUrl: row.dishes?.photo_url ?? null,
-    mealCycleId: row.meal_cycle_id,
   }));
 }
 
 export async function setPlannedMeal(
   date: string,
   mealSlot: MealSlot,
-  dishId: string,
+  dishId: string | null,
   mealCycleId: string | null = null
 ): Promise<void> {
   if (isDemoMode()) {
@@ -137,6 +195,30 @@ export async function clearPlannedMeal(
   if (error) {
     console.warn("Impossible de retirer le repas", error);
     throw new Error("Suppression du repas impossible");
+  }
+}
+
+/** Supprime tous les repas planifiés (passés et futurs) de l'utilisateur. */
+export async function clearAllPlannedMeals(): Promise<void> {
+  if (isDemoMode()) {
+    await clearAllDemoPlannedMeals();
+    return;
+  }
+
+  const supabase = getSupabase();
+  if (!supabase) return;
+
+  const userId = await getCurrentUserId();
+  if (!userId) return;
+
+  const { error } = (await supabase
+    .from("planned_meals")
+    .delete()
+    .eq("user_id", userId)) as MutateResult;
+
+  if (error) {
+    console.warn("Impossible de vider le planning", error);
+    throw new Error("Suppression du planning impossible");
   }
 }
 
@@ -202,9 +284,11 @@ export async function applyCycleToRange(
   const cycle = await fetchPatternById(cycleId);
   if (!cycle) throw new Error("Motif de répétition introuvable");
 
-  const existing = await fetchPlannedMeals(periodStart, periodEnd);
+  // Inclut les cases explicitement vidées (dish_id null) : le motif ne
+  // doit pas les réappliquer, contrairement aux cases jamais visitées.
+  const existing = await fetchOccupiedSlots(periodStart, periodEnd);
   const existingByKey = new Map(
-    existing.map((meal) => [`${meal.date}-${meal.mealSlot}`, meal])
+    existing.map((slot) => [`${slot.date}-${slot.mealSlot}`, slot])
   );
 
   const cycleEntriesByOffset = new Map(

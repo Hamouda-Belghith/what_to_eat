@@ -13,6 +13,7 @@ import type { MealSlot } from "@/lib/supabase/database.types";
 import type { MealCycle, MealCycleEntry } from "@/features/cycles/types";
 import {
   applyCycleToRange,
+  clearAllPlannedMeals,
   clearPlannedMeal,
   fetchPlannedMeals,
   setPlannedMeal,
@@ -389,7 +390,16 @@ export async function setMealWithScope(
 
   if (!pattern || !scope || scope === "this_week") {
     if (dishId === null) {
-      await clearPlannedMeal(date, mealSlot);
+      if (pattern) {
+        // Un motif est actif : une simple suppression serait aussitôt
+        // recréée par `ensurePatternApplied` au prochain chargement (la
+        // case redeviendrait "vide" pour le motif). On pose une case
+        // "vidée" (dish_id null) à la place, qui occupe l'emplacement
+        // sans représenter de repas — voir `setPlannedMeal`.
+        await setPlannedMeal(date, mealSlot, null, null);
+      } else {
+        await clearPlannedMeal(date, mealSlot);
+      }
     } else {
       await setPlannedMeal(date, mealSlot, dishId, null);
     }
@@ -503,4 +513,31 @@ export async function setMealWithScope(
 export async function isRepeatActive(): Promise<boolean> {
   const config = await getRepeatConfig();
   return config.active;
+}
+
+/**
+ * Vide tous les repas de la semaine [weekStartISO, weekEndISO], y compris
+ * ceux issus du motif de répétition actif (équivaut à faire "cette
+ * semaine seulement" sur chaque case remplie). Les autres semaines du
+ * motif ne sont pas touchées.
+ */
+export async function clearWeek(
+  weekStartISO: string,
+  weekEndISO: string
+): Promise<void> {
+  const meals = await fetchPlannedMeals(weekStartISO, weekEndISO);
+  for (const meal of meals) {
+    await setMealWithScope(meal.date, meal.mealSlot, null, "this_week");
+  }
+}
+
+/**
+ * Vide tout le planning (tous les repas, toutes les semaines, passées
+ * et futures) et désactive le motif de répétition actif. Action
+ * destructrice — la confirmation est à la charge de l'appelant (UI).
+ */
+export async function clearAllWeeks(): Promise<RepeatConfig> {
+  await clearAllPlannedMeals();
+  await deletePattern();
+  return getRepeatConfig();
 }

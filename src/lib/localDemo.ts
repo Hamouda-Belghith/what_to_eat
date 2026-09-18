@@ -51,7 +51,7 @@ interface DemoPlannedMeal {
   id: string;
   date: string;
   mealSlot: MealSlot;
-  dishId: string;
+  dishId: string | null;
   mealCycleId: string | null;
   createdAt: string;
 }
@@ -429,8 +429,11 @@ export async function fetchDemoPlannedMeals(
   periodEnd: string
 ): Promise<PlannedMeal[]> {
   const state = loadState();
+  // dishId null = case explicitement vidée (voir setMealWithScope) : ne
+  // représente pas un vrai repas, on la cache de tout le reste de l'app.
   return state.plannedMeals
     .filter((meal) => meal.date >= periodStart && meal.date <= periodEnd)
+    .filter((meal): meal is DemoPlannedMeal & { dishId: string } => meal.dishId !== null)
     .map((meal) => {
       const dish = state.dishes.find((d) => d.id === meal.dishId);
       return {
@@ -445,10 +448,30 @@ export async function fetchDemoPlannedMeals(
     });
 }
 
+/**
+ * Emplacements occupés (dish_id inclus même `null`) sur la période.
+ * Sert uniquement à `applyDemoCycleToRange` pour savoir où ne pas
+ * réappliquer le motif — contrairement à `fetchDemoPlannedMeals`.
+ */
+export async function fetchDemoOccupiedSlots(
+  periodStart: string,
+  periodEnd: string
+): Promise<{ id: string; date: string; mealSlot: MealSlot; dishId: string | null }[]> {
+  const state = loadState();
+  return state.plannedMeals
+    .filter((meal) => meal.date >= periodStart && meal.date <= periodEnd)
+    .map((meal) => ({
+      id: meal.id,
+      date: meal.date,
+      mealSlot: meal.mealSlot,
+      dishId: meal.dishId,
+    }));
+}
+
 export async function setDemoPlannedMeal(
   date: string,
   mealSlot: MealSlot,
-  dishId: string,
+  dishId: string | null,
   mealCycleId: string | null = null
 ): Promise<void> {
   const state = loadState();
@@ -485,6 +508,12 @@ export async function clearDemoPlannedMeal(
   state.plannedMeals = state.plannedMeals.filter(
     (meal) => !(meal.date === date && meal.mealSlot === mealSlot)
   );
+  saveState(state);
+}
+
+export async function clearAllDemoPlannedMeals(): Promise<void> {
+  const state = loadState();
+  state.plannedMeals = [];
   saveState(state);
 }
 

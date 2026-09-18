@@ -6,6 +6,69 @@ haut du fichier (ordre antéchronologique).
 
 ---
 
+## 2026-09-18 — Boutons « Vider », navigation calendrier, et repas planifié "vide" (dish_id nullable)
+
+**Contexte** : demande de deux fonctionnalités sur le Planning —
+un bouton pour vider la semaine affichée ou tout le planning, et un
+moyen plus rapide de naviguer entre les semaines qu'avec les flèches
+prev/suivant.
+
+**Bug découvert en implémentant "Vider cette semaine"** : retirer un
+repas avec la portée « cette semaine seulement » pendant qu'un motif de
+répétition est actif ne persistait pas. La ligne `planned_meals` était
+supprimée, mais `ensurePatternApplied` (appelé à chaque chargement du
+planning, y compris juste après l'action elle-même) considérait
+l'emplacement comme "jamais rempli" et le regénérait aussitôt depuis le
+motif. Le repas retiré réapparaissait donc au rechargement suivant.
+C'était déjà vrai avant cette tâche (comportement du bouton « Retirer le
+repas » existant), mais bloquant pour « Vider cette semaine », qui doit
+justement fonctionner sur les cases issues du motif.
+
+**Décision** :
+- `planned_meals.dish_id` devient nullable (migration
+  `0005_nullable_planned_meal_dish.sql`). Une ligne à `dish_id = null`
+  représente une case **explicitement vidée** : elle occupe
+  l'emplacement (date + repas) pour empêcher le motif de le remplir à
+  nouveau, mais ne représente aucun repas réel.
+- `fetchPlannedMeals` (et son équivalent démo) filtrent ces lignes
+  avant de les renvoyer : le reste de l'app (UI, génération de liste de
+  courses, snapshot d'un nouveau motif) ne les voit jamais, elles
+  s'affichent comme une case vide normale.
+- `applyCycleToRange`/`applyDemoCycleToRange` utilisent en interne une
+  requête distincte (`fetchOccupiedSlots` / `fetchDemoOccupiedSlots`)
+  qui, elle, voit ces lignes — pour savoir où ne pas réappliquer le
+  motif.
+- `setMealWithScope` (portée "cette semaine") pose une case vidée au
+  lieu de supprimer la ligne **seulement si un motif est actif** ;
+  sinon (pas de motif), suppression réelle comme avant — pas de ligne
+  inutile à conserver.
+- Nouvelles fonctions `clearWeek` (vide une semaine, y compris les
+  cases du motif — équivaut à faire "cette semaine seulement" sur
+  chaque case) et `clearAllWeeks` (supprime tous les repas planifiés,
+  passés et futurs, et désactive le motif) dans
+  `src/features/planning/repeat.ts`, exposées par deux boutons
+  « Vider » (rouges, avec confirmation) dans le Planning.
+- Navigation calendrier : `<input type="date">` natif dans l'en-tête du
+  Planning (à côté de « Aujourd'hui »), qui saute à la semaine contenant
+  la date choisie. Choix délibéré face à un composant calendrier
+  personnalisé : aucune dépendance ajoutée, calendrier natif du
+  navigateur, cohérent avec la contrainte de simplicité du projet.
+
+**Pourquoi corriger le bug maintenant plutôt que le signaler seulement** :
+la fonctionnalité demandée (« vider cette semaine, y compris les cases
+du modèle ») ne pouvait pas être livrée correctement sans ce correctif
+— sans lui, le bouton aurait semblé fonctionner puis silencieusement
+« annulé » l'action au rechargement suivant.
+
+**Réversibilité** : changement de schéma additif (colonne rendue
+nullable, pas de perte de données). Un rollback nécessiterait de
+vérifier qu'aucune ligne à `dish_id null` n'existe avant de remettre la
+contrainte `not null`.
+
+**Migration** : `supabase/migrations/0005_nullable_planned_meal_dish.sql`.
+
+---
+
 ## 2026-09-18 — Fréquence libre du motif global + détection de chevauchement
 
 **Contexte** : une première itération avait ajouté un second mécanisme

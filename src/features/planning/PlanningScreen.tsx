@@ -6,6 +6,7 @@ import { Modal } from "@/components/ui/Modal";
 import { Spinner } from "@/components/ui/Spinner";
 import {
   addDays,
+  parseISODate,
   startOfWeek,
   toISODate,
   formatDateShort,
@@ -20,6 +21,8 @@ import {
 } from "@/features/cycles/api";
 import { fetchPlannedMeals } from "./api";
 import {
+  clearAllWeeks,
+  clearWeek,
   ensurePatternApplied,
   findRepeatConflicts,
   getRepeatConfig,
@@ -91,6 +94,52 @@ export function PlanningScreen() {
 
   function currentWeek() {
     setWeekStart(startOfWeek(new Date()));
+  }
+
+  function jumpToDate(dateISO: string) {
+    if (!dateISO) return;
+    setWeekStart(startOfWeek(parseISODate(dateISO)));
+  }
+
+  async function handleClearWeek() {
+    const ok = window.confirm(
+      `Vider tous les repas de la semaine du ${formatDateLong(weekStartISO)} ? ` +
+        "Cette action est irréversible."
+    );
+    if (!ok) return;
+    setBusy(true);
+    setError(null);
+    setHint(null);
+    try {
+      await clearWeek(weekStartISO, weekEndISO);
+      await loadMeals();
+      setHint("Semaine vidée.");
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Impossible de vider la semaine");
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  async function handleClearAll() {
+    const ok = window.confirm(
+      "Vider tout le planning (toutes les semaines, passées et futures) et désactiver " +
+        "la répétition ? Cette action est irréversible."
+    );
+    if (!ok) return;
+    setBusy(true);
+    setError(null);
+    setHint(null);
+    try {
+      const config = await clearAllWeeks();
+      setRepeat(config);
+      await loadMeals();
+      setHint("Planning entièrement vidé.");
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Impossible de vider le planning");
+    } finally {
+      setBusy(false);
+    }
   }
 
   async function applyRepeat(interval: RepeatInterval | null, overwrite = false) {
@@ -240,6 +289,15 @@ export function PlanningScreen() {
           <Button variant="ghost" onClick={nextWeek} aria-label="Semaine suivante">
             →
           </Button>
+          <input
+            type="date"
+            className="input week-jump-input"
+            value={weekStartISO}
+            disabled={busy}
+            onChange={(e) => jumpToDate(e.target.value)}
+            aria-label="Aller à la semaine d'une date précise"
+            title="Aller à une semaine précise"
+          />
         </div>
       </div>
 
@@ -292,6 +350,28 @@ export function PlanningScreen() {
               prolonger automatiquement.
             </p>
           )}
+        </div>
+
+        <div className="repeat-panel">
+          <span className="repeat-panel-label">Vider</span>
+          <div className="row" style={{ gap: "0.5rem" }}>
+            <Button
+              variant="danger"
+              size="sm"
+              disabled={busy}
+              onClick={() => void handleClearWeek()}
+            >
+              Cette semaine
+            </Button>
+            <Button
+              variant="danger"
+              size="sm"
+              disabled={busy}
+              onClick={() => void handleClearAll()}
+            >
+              Toutes les semaines
+            </Button>
+          </div>
         </div>
       </div>
 

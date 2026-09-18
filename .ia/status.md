@@ -38,6 +38,25 @@ Résumé:
   répétition « par repas » séparé (table `meal_repeats`) — retiré à la
   demande de l'utilisateur, un seul mécanisme de répétition (le motif
   global) est conservé.
+- **Vider la semaine / tout le planning** : deux boutons dans le
+  Planning (« Vider » → « Cette semaine » / « Toutes les semaines »),
+  avec confirmation. « Toutes les semaines » désactive aussi le motif de
+  répétition. Nécessite `planned_meals.dish_id` nullable (voir migration
+  ci-dessous) pour fonctionner correctement sur les cases issues du
+  motif.
+- **Navigation par calendrier** : un `<input type="date">` dans l'en-tête
+  du Planning permet de sauter directement à la semaine d'une date
+  choisie, en plus des flèches précédent/suivant.
+- **Correctif important : repas planifié "vide" (`dish_id` nullable)** —
+  `planned_meals.dish_id` peut désormais être `null`, ce qui représente
+  une case explicitement vidée par l'utilisateur (empêche le motif de
+  répétition de la remplir à nouveau au chargement suivant). Ce
+  correctif était nécessaire au bon fonctionnement de « Vider cette
+  semaine », mais corrige aussi un bug préexistant : retirer un repas
+  avec « cette semaine seulement » pendant qu'un motif est actif ne
+  persistait pas avant. Voir `.ia/decisions.md` (2026-09-18) et la
+  migration `0005_nullable_planned_meal_dish.sql` (à appliquer sur la
+  base de production).
 
 État de la production :
 - Le frontend Vercel est prêt, mais la version “réelle” n'est pas encore
@@ -46,7 +65,8 @@ Résumé:
   `NEXT_PUBLIC_SUPABASE_ANON_KEY`.
 - Appliquer les migrations SQL (`0001_init.sql`, et le cas échéant
   `0002_user_scoping.sql`, `0003_single_repeat_pattern.sql`,
-  `0004_dish_photos.sql`) sur la base Supabase de production.
+  `0004_dish_photos.sql`, `0005_nullable_planned_meal_dish.sql`) sur la
+  base Supabase de production.
 - L'authentification email Supabase doit être vérifiée si les utilisateurs
   doivent créer des comptes depuis la version déployée.
 

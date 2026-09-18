@@ -93,6 +93,24 @@ Un seul mécanisme de répétition existe (pas de répétition par repas
 séparée — une tentative en ce sens a été retirée, voir
 `.ia/decisions.md` 2026-09-18).
 
+**`planned_meals.dish_id` est nullable.** Une ligne à `dish_id = null`
+représente une case **explicitement vidée** par l'utilisateur (via les
+boutons « Vider » ou un retrait « cette semaine seulement » pendant
+qu'un motif est actif) : elle occupe l'emplacement (date + repas) pour
+empêcher le motif de le remplir à nouveau, mais ne représente aucun
+repas réel. `fetchPlannedMeals`/`fetchDemoPlannedMeals` filtrent ces
+lignes avant de les renvoyer — tout le reste de l'app (UI, snapshot
+d'un nouveau motif, génération de la liste de courses) les traite comme
+une case vide normale. Seul `applyCycleToRange`/`applyDemoCycleToRange`
+en a besoin (via `fetchOccupiedSlots`/`fetchDemoOccupiedSlots`), pour
+savoir où ne pas réappliquer le motif. Voir `.ia/decisions.md`
+2026-09-18 pour le bug que ce mécanisme corrige.
+
+Le Planning propose aussi : « Vider cette semaine » / « Vider toutes
+les semaines » (`clearWeek`/`clearAllWeeks` dans `repeat.ts`), et une
+navigation par calendrier (`<input type="date">`) en plus des flèches
+précédent/suivant.
+
 **Photo de plat** : `dishes.photo_url` stocke l'URL publique d'un
 fichier dans le bucket Supabase Storage `dish-photos` (policies RLS :
 lecture publique, écriture scoping par dossier `user_id/...`). En mode

@@ -101,7 +101,7 @@ export interface Database {
           id: string;
           date: string;
           meal_slot: MealSlot;
-          dish_id: string;
+          dish_id: string | null;
           meal_cycle_id: string | null;
           created_at: string;
         };
@@ -109,7 +109,7 @@ export interface Database {
           id?: string;
           date: string;
           meal_slot: MealSlot;
-          dish_id: string;
+          dish_id?: string | null;
           meal_cycle_id?: string | null;
           created_at?: string;
         };
