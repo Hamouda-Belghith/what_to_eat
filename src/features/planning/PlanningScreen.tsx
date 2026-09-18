@@ -280,24 +280,21 @@ export function PlanningScreen() {
           </p>
         </div>
         <div className="week-nav">
-          <Button variant="ghost" onClick={previousWeek} aria-label="Semaine précédente">
-            ←
-          </Button>
           <Button variant="ghost" onClick={currentWeek}>
             Aujourd&apos;hui
           </Button>
-          <Button variant="ghost" onClick={nextWeek} aria-label="Semaine suivante">
-            →
-          </Button>
-          <input
-            type="date"
-            className="input week-jump-input"
-            value={weekStartISO}
-            disabled={busy}
-            onChange={(e) => jumpToDate(e.target.value)}
-            aria-label="Aller à la semaine d'une date précise"
-            title="Aller à une semaine précise"
-          />
+          <label className="week-jump">
+            <span aria-hidden="true">📅</span>
+            <input
+              type="date"
+              className="week-jump-input"
+              value={weekStartISO}
+              disabled={busy}
+              onChange={(e) => jumpToDate(e.target.value)}
+              aria-label="Aller directement à la semaine d'une date (pour sauter plusieurs semaines)"
+              title="Aller directement à une semaine précise"
+            />
+          </label>
         </div>
       </div>
 
@@ -384,9 +381,20 @@ export function PlanningScreen() {
         </p>
       ) : null}
 
-      {meals === null ? (
-        <Spinner />
-      ) : (
+      <div className="week-grid-row">
+        <button
+          type="button"
+          className="week-edge-nav"
+          onClick={previousWeek}
+          disabled={busy}
+          aria-label="Semaine précédente"
+        >
+          ‹
+        </button>
+
+        {meals === null ? (
+          <Spinner />
+        ) : (
         <div className="week-grid">
           <div className="week-slot-col">
             <div className="week-day-head" aria-hidden="true">
@@ -460,7 +468,18 @@ export function PlanningScreen() {
             );
           })}
         </div>
-      )}
+        )}
+
+        <button
+          type="button"
+          className="week-edge-nav"
+          onClick={nextWeek}
+          disabled={busy}
+          aria-label="Semaine suivante"
+        >
+          ›
+        </button>
+      </div>
 
       {editingCell ? (
         <Modal

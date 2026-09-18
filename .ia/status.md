@@ -44,9 +44,14 @@ Résumé:
   répétition. Nécessite `planned_meals.dish_id` nullable (voir migration
   ci-dessous) pour fonctionner correctement sur les cases issues du
   motif.
-- **Navigation par calendrier** : un `<input type="date">` dans l'en-tête
-  du Planning permet de sauter directement à la semaine d'une date
-  choisie, en plus des flèches précédent/suivant.
+- **Navigation entre semaines revue** : les flèches précédent/suivant
+  sont désormais collées aux extrémités gauche/droite du tableau du
+  planning (plus intuitif : elles font défiler *ce tableau*), au lieu
+  d'être regroupées dans l'en-tête avec « Aujourd'hui ». L'en-tête ne
+  garde que « Aujourd'hui » et un `<input type="date">` (icône 📅) pour
+  sauter directement à une semaine éloignée (dans 3-4 semaines, etc.),
+  sans passer par les flèches. Voir `src/features/planning/PlanningScreen.tsx`
+  (`.week-grid-row` / `.week-edge-nav`) et `globals.css`.
 - **Correctif important : repas planifié "vide" (`dish_id` nullable)** —
   `planned_meals.dish_id` peut désormais être `null`, ce qui représente
   une case explicitement vidée par l'utilisateur (empêche le motif de

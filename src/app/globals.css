@@ -428,19 +428,66 @@ button {
   border: none;
 }
 
+.week-jump {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.35rem;
+  padding: 0.4rem 0.7rem 0.4rem 0.55rem;
+  border-radius: 999px;
+  cursor: pointer;
+  font-size: 0.9rem;
+}
+
+.week-jump:hover {
+  background: var(--paper-deep);
+}
+
 .week-jump-input {
   border: none;
   background: transparent;
-  border-radius: 999px;
-  padding: 0.4rem 0.6rem;
+  padding: 0;
   font: inherit;
   font-size: 0.85rem;
   color: var(--ink);
   cursor: pointer;
 }
 
-.week-jump-input:hover {
-  background: var(--paper-deep);
+/* ---------- Navigation aux extrémités du tableau du planning ---------- */
+
+.week-grid-row {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+}
+
+.week-grid-row .week-grid {
+  flex: 1;
+  min-width: 0;
+}
+
+.week-edge-nav {
+  flex-shrink: 0;
+  width: 2.4rem;
+  height: 2.4rem;
+  border-radius: 999px;
+  border: var(--border);
+  background: var(--card);
+  color: var(--accent-dark);
+  font-size: 1.3rem;
+  font-weight: 700;
+  line-height: 1;
+  box-shadow: var(--shadow-sm);
+  transition: background 0.12s ease, transform 0.12s ease;
+}
+
+.week-edge-nav:hover:not(:disabled) {
+  background: var(--accent-soft);
+  transform: scale(1.05);
+}
+
+.week-edge-nav:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
 }
 
 .repeat-panel {
