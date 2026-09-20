@@ -4,7 +4,7 @@
 //   npx supabase gen types typescript --project-id <ton-project-id> > src/lib/supabase/database.types.ts
 // pour rester parfaitement synchronisé avec la vraie base.
 
-export type MealSlot = "breakfast" | "lunch" | "dinner";
+export type MealSlot = "breakfast" | "lunch" | "snack" | "dinner";
 
 export interface Database {
   public: {
@@ -30,6 +30,8 @@ export interface Database {
           name: string;
           description: string | null;
           photo_url: string | null;
+          calories: number | null;
+          protein_g: number | null;
           created_at: string;
         };
         Insert: {
@@ -37,6 +39,8 @@ export interface Database {
           name: string;
           description?: string | null;
           photo_url?: string | null;
+          calories?: number | null;
+          protein_g?: number | null;
           created_at?: string;
         };
         Update: Partial<Database["public"]["Tables"]["dishes"]["Insert"]>;

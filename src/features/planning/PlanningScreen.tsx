@@ -6,6 +6,7 @@ import { Modal } from "@/components/ui/Modal";
 import { Spinner } from "@/components/ui/Spinner";
 import {
   addDays,
+  formatQuantity,
   parseISODate,
   startOfWeek,
   toISODate,
@@ -33,10 +34,77 @@ import {
   type RepeatConfig,
   type RepeatInterval,
 } from "./repeat";
+import { sumNutrition } from "./nutrition";
 import type { PlannedMeal } from "./types";
 
 const WEEK_DAYS = 7;
 const DAY_LABELS = ["Lun", "Mar", "Mer", "Jeu", "Ven", "Sam", "Dim"];
+
+/**
+ * Préférence d'affichage mémorisée sur cet appareil. Lue après le
+ * premier rendu (et non dans `useState`) pour que le HTML pré-rendu
+ * côté serveur reste identique à celui du premier rendu client.
+ */
+function usePersistedFlag(key: string, initial: boolean) {
+  const [value, setValue] = useState(initial);
+
+  useEffect(() => {
+    try {
+      const stored = window.localStorage.getItem(key);
+      if (stored !== null) setValue(stored === "1");
+    } catch {
+      // Stockage indisponible (navigation privée…) : on garde la valeur par défaut.
+    }
+  }, [key]);
+
+  function update(next: boolean) {
+    setValue(next);
+    try {
+      window.localStorage.setItem(key, next ? "1" : "0");
+    } catch {
+      // Non bloquant : la préférence ne sera simplement pas mémorisée.
+    }
+  }
+
+  return [value, update] as const;
+}
+
+/**
+ * « – » quand la somme est nulle (aucun repas, ou plats sans valeur
+ * renseignée) ; « * » quand la somme ignore certains plats.
+ */
+function formatTotal(
+  value: number,
+  incomplete: boolean,
+  unit: string,
+  decimals: number
+): string {
+  if (value === 0) return "–";
+  const factor = 10 ** decimals;
+  const rounded = Math.round(value * factor) / factor;
+  return `${formatQuantity(rounded)} ${unit}${incomplete ? "*" : ""}`;
+}
+
+function DisplayToggle({
+  label,
+  checked,
+  onChange,
+}: {
+  label: string;
+  checked: boolean;
+  onChange: (checked: boolean) => void;
+}) {
+  return (
+    <label className={`pill-checkbox ${checked ? "active" : ""}`}>
+      <input
+        type="checkbox"
+        checked={checked}
+        onChange={(e) => onChange(e.target.checked)}
+      />
+      {label}
+    </label>
+  );
+}
 
 export function PlanningScreen() {
   const [weekStart, setWeekStart] = useState<Date>(() =>
@@ -50,6 +118,11 @@ export function PlanningScreen() {
   const [error, setError] = useState<string | null>(null);
   const [hint, setHint] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
+
+  const [showBreakfast, setShowBreakfast] = usePersistedFlag("planning-show-breakfast", true);
+  const [showSnack, setShowSnack] = usePersistedFlag("planning-show-snack", false);
+  const [showCalories, setShowCalories] = usePersistedFlag("planning-show-calories", false);
+  const [showProtein, setShowProtein] = usePersistedFlag("planning-show-protein", false);
 
   const [editingCell, setEditingCell] = useState<{
     date: string;
@@ -298,6 +371,12 @@ export function PlanningScreen() {
 
   const choosingScope = editingCell !== null && pendingDishId !== undefined;
 
+  const visibleSlots = MEAL_SLOTS.filter(
+    (slot) =>
+      (slot !== "breakfast" || showBreakfast) && (slot !== "snack" || showSnack)
+  );
+  const totalsCount = Number(showCalories) + Number(showProtein);
+
   return (
     <div className="screen">
       <div className="screen-header">
@@ -365,8 +444,8 @@ export function PlanningScreen() {
             <p className="repeat-hint">
               Modèle basé sur la semaine du {formatDateLong(repeat.startDate ?? weekStartISO)},
               répété toutes les {repeat.intervalWeeks} semaine
-              {(repeat.intervalWeeks ?? 1) > 1 ? "s" : ""}, visible sur les cases marquées
-              « Modèle ». Modifier une case déjà remplie proposera de choisir : cette
+              {(repeat.intervalWeeks ?? 1) > 1 ? "s" : ""}, visible sur les cases
+              encadrées en vert. Modifier une case déjà remplie proposera de choisir : cette
               semaine seulement, ou le modèle pour toutes les semaines à venir. Remplir
               une case vide l&apos;ajoute simplement pour cette semaine-là.
             </p>
@@ -397,6 +476,32 @@ export function PlanningScreen() {
             >
               Toutes les semaines
             </Button>
+          </div>
+        </div>
+
+        <div className="repeat-panel">
+          <span className="repeat-panel-label">Affichage</span>
+          <div className="row">
+            <DisplayToggle
+              label="Petit-déjeuner"
+              checked={showBreakfast}
+              onChange={setShowBreakfast}
+            />
+            <DisplayToggle
+              label="Collation"
+              checked={showSnack}
+              onChange={setShowSnack}
+            />
+            <DisplayToggle
+              label="Calories du jour"
+              checked={showCalories}
+              onChange={setShowCalories}
+            />
+            <DisplayToggle
+              label="Protéines du jour"
+              checked={showProtein}
+              onChange={setShowProtein}
+            />
           </div>
         </div>
       </div>
@@ -444,21 +549,26 @@ export function PlanningScreen() {
               <br />
               <span style={{ fontSize: "0.78rem", fontWeight: 500 }}>.</span>
             </div>
-            {MEAL_SLOTS.map((slot) => (
+            {visibleSlots.map((slot) => (
               <div key={slot} className="week-slot-label">
                 {MEAL_SLOT_LABELS[slot]}
               </div>
             ))}
+            {totalsCount > 0 ? (
+              <div className={`week-total-label week-total-${totalsCount}`}>Total</div>
+            ) : null}
           </div>
 
           {Array.from({ length: WEEK_DAYS }, (_, i) => {
             const date = addDays(weekStart, i);
             const dateISO = toISODate(date);
             const isToday = dateISO === toISODate(new Date());
-            const bySlot = new Map(
-              (meals ?? [])
-                .filter((m) => m.date === dateISO)
-                .map((m) => [m.mealSlot, m])
+            const dayMeals = (meals ?? []).filter((m) => m.date === dateISO);
+            const bySlot = new Map(dayMeals.map((m) => [m.mealSlot, m]));
+            // Seuls les créneaux affichés comptent : le total doit
+            // correspondre à ce que l'on voit dans la colonne.
+            const totals = sumNutrition(
+              dayMeals.filter((m) => visibleSlots.includes(m.mealSlot))
             );
 
             return (
@@ -470,42 +580,57 @@ export function PlanningScreen() {
                     {formatDateShort(dateISO).split(" ")[1] ?? ""}
                   </span>
                 </div>
-                {MEAL_SLOTS.map((slot) => {
+                {visibleSlots.map((slot) => {
                   const meal = bySlot.get(slot);
                   return (
                     <button
                       key={slot}
                       type="button"
-                      className={`meal-cell ${meal ? "" : "meal-cell-empty"}`}
+                      className={`meal-cell ${meal ? "" : "meal-cell-empty"} ${
+                        meal?.mealCycleId ? "meal-cell-repeated" : ""
+                      }`}
+                      title={
+                        meal?.mealCycleId
+                          ? "Fait partie du modèle de répétition actif (barre « Répéter » en haut). Le modifier proposera de choisir : cette semaine seulement, ou le modèle pour toutes les semaines à venir."
+                          : undefined
+                      }
                       onClick={() => handleCellClick(dateISO, slot)}
                       disabled={busy}
                     >
                       {meal ? (
-                        <>
-                          {meal.dishPhotoUrl ? (
-                            // eslint-disable-next-line @next/next/no-img-element
-                            <img
-                              src={meal.dishPhotoUrl}
-                              alt=""
-                              className="meal-cell-photo"
-                            />
-                          ) : null}
-                          <span className="meal-cell-name">{meal.dishName}</span>
-                          {meal.mealCycleId ? (
-                            <span
-                              className="meal-cell-override"
-                              title="Fait partie du modèle de répétition actif (barre « Répéter » en haut). Le modifier proposera de choisir : cette semaine seulement, ou le modèle pour toutes les semaines à venir."
-                            >
-                              Modèle
-                            </span>
-                          ) : null}
-                        </>
+                        <span className="meal-cell-name">{meal.dishName}</span>
                       ) : (
                         <span>+</span>
                       )}
                     </button>
                   );
                 })}
+                {totalsCount > 0 ? (
+                  <div className={`week-total-cell week-total-${totalsCount}`}>
+                    {showCalories ? (
+                      <span
+                        title={
+                          totals.caloriesIncomplete
+                            ? "Certains plats n'ont pas de calories renseignées (onglet Plats)."
+                            : undefined
+                        }
+                      >
+                        {formatTotal(totals.calories, totals.caloriesIncomplete, "kcal", 0)}
+                      </span>
+                    ) : null}
+                    {showProtein ? (
+                      <span
+                        title={
+                          totals.proteinIncomplete
+                            ? "Certains plats n'ont pas de protéines renseignées (onglet Plats)."
+                            : undefined
+                        }
+                      >
+                        {formatTotal(totals.proteinG, totals.proteinIncomplete, "g prot.", 1)}
+                      </span>
+                    ) : null}
+                  </div>
+                ) : null}
               </div>
             );
           })}
@@ -578,10 +703,6 @@ export function PlanningScreen() {
                   className="dish-pick-item"
                   onClick={() => handlePickDish(dish.id)}
                 >
-                  {dish.photoUrl ? (
-                    // eslint-disable-next-line @next/next/no-img-element
-                    <img src={dish.photoUrl} alt="" className="dish-pick-photo" />
-                  ) : null}
                   {dish.name}
                 </button>
               ))}

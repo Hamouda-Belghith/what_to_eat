@@ -18,7 +18,9 @@ accueillir d'autres foyers pour l'instant.
 ## Fonctionnalités principales
 
 - Créer un planning de repas pour chaque jour, avec distinction entre
-  petit-déjeuner, déjeuner et dîner.
+  petit-déjeuner, déjeuner, collation et dîner. Le petit-déjeuner et la
+  collation peuvent être masqués depuis le panneau « Affichage » du
+  Planning. Les cases issues de la répétition sont encadrées en vert.
 - Rendre une semaine répétitive depuis le Planning, avec une fréquence
   libre choisie par l'utilisateur (« toutes les N semaines », pas
   seulement 1 ou 2). Pas d'onglet ni de ressource « Cycles » séparée —
@@ -28,8 +30,11 @@ accueillir d'autres foyers pour l'instant.
   la main sur des semaines à venir et entrent en conflit avec la
   fréquence choisie, l'utilisateur en est averti avant de valider (pour
   changer de fréquence, ou confirmer le remplacement).
-- Associer une photo (optionnelle) à un plat, visible sur sa fiche et
-  sur les cases du planning où il est prévu.
+- Associer une photo (optionnelle) à un plat, visible sur sa fiche
+  (écran Plats) ; le Planning n'affiche que le nom du plat.
+- Renseigner (optionnellement) les calories et les protéines d'un plat,
+  pour une portion. Le Planning peut afficher, pour chaque jour, la somme
+  des calories et/ou des protéines des repas affichés.
 - Associer une liste d'ingrédients à chaque plat. Les ingrédients sont
   saisis manuellement une fois par plat et réutilisés ensuite — pas
   d'intégration avec une API de supermarché.

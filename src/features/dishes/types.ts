@@ -10,5 +10,9 @@ export interface Dish {
   name: string;
   description: string | null;
   photoUrl: string | null;
+  /** kcal pour une portion ; null = non renseigné. */
+  calories: number | null;
+  /** Grammes de protéines pour une portion ; null = non renseigné. */
+  proteinG: number | null;
   ingredients: DishIngredient[];
 }

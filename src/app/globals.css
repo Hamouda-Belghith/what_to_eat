@@ -605,17 +605,21 @@ button {
   transition: border-color 0.12s ease, box-shadow 0.12s ease, transform 0.12s ease;
 }
 
-.meal-cell-photo {
-  width: 100%;
-  height: 32px;
-  object-fit: cover;
-  border-radius: 6px;
-  border: 1px solid var(--line);
-}
-
 .meal-cell:hover {
   border-color: #9ccbb4;
   box-shadow: var(--shadow-sm);
+}
+
+/* Case issue du modèle de répétition actif : cadre vert plein. */
+.meal-cell-repeated {
+  border-color: var(--accent);
+  box-shadow: inset 0 0 0 1px var(--accent);
+  background: var(--accent-soft);
+}
+
+.meal-cell-repeated:hover {
+  border-color: var(--accent-dark);
+  box-shadow: inset 0 0 0 1px var(--accent-dark);
 }
 
 .meal-cell:disabled {
@@ -648,12 +652,50 @@ button {
   overflow: hidden;
 }
 
-.meal-cell-override {
-  font-size: 0.65rem;
-  font-weight: 650;
-  color: var(--accent);
+/* Ligne « Total » sous les créneaux : même hauteur dans la colonne des
+   libellés et dans celles des jours pour rester alignées. */
+.week-total-label,
+.week-total-cell {
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+}
+
+.week-total-1 {
+  height: 2.2rem;
+}
+
+.week-total-2 {
+  height: 3.5rem;
+}
+
+.week-total-label {
+  font-size: 0.68rem;
+  font-weight: 700;
+  text-align: right;
+  align-items: flex-end;
+  color: var(--muted);
   text-transform: uppercase;
   letter-spacing: 0.03em;
+}
+
+.week-total-cell {
+  align-items: center;
+  gap: 0.1rem;
+  border: var(--border);
+  border-radius: var(--radius-sm);
+  background: var(--paper-deep);
+  font-size: 0.72rem;
+  font-weight: 650;
+  text-align: center;
+  padding: 0 0.2rem;
+}
+
+.week-total-cell > span {
+  max-width: 100%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .dish-pick-list {
@@ -682,15 +724,6 @@ button {
 .dish-pick-item:hover {
   border-color: #9ccbb4;
   background: var(--accent-soft);
-}
-
-.dish-pick-photo {
-  width: 2rem;
-  height: 2rem;
-  object-fit: cover;
-  border-radius: 6px;
-  border: 1px solid var(--line);
-  flex-shrink: 0;
 }
 
 .dish-card-photo {

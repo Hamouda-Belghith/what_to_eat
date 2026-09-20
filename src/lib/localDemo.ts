@@ -1,6 +1,6 @@
 import type { MealSlot } from "@/lib/supabase/database.types";
 import type { Dish, DishIngredient } from "@/features/dishes/types";
-import type { MealCycle, MealCycleEntry } from "@/features/cycles/types";
+import { MEAL_SLOTS, type MealCycle, type MealCycleEntry } from "@/features/cycles/types";
 import type { PlannedMeal } from "@/features/planning/types";
 import { getDb } from "./db/dexie";
 import { DEMO_USER_ID, getSupabase } from "./supabase/client";
@@ -20,6 +20,9 @@ interface DemoDish {
   name: string;
   description: string | null;
   photoUrl: string | null;
+  // Absents des états sauvegardés avant l'ajout des apports : lus avec `?? null`.
+  calories?: number | null;
+  proteinG?: number | null;
   createdAt: string;
 }
 
@@ -138,6 +141,8 @@ export async function fetchDemoDishes(): Promise<Dish[]> {
       name: dish.name,
       description: dish.description,
       photoUrl: dish.photoUrl,
+      calories: dish.calories ?? null,
+      proteinG: dish.proteinG ?? null,
       ingredients: state.dishIngredients
         .filter((entry) => entry.dishId === dish.id)
         .map((entry) => ({
@@ -168,6 +173,8 @@ export async function saveDemoDish(
     name: trimmedName,
     description: dish.description?.trim() || null,
     photoUrl: dish.photoUrl === undefined ? existingPhotoUrl : dish.photoUrl,
+    calories: dish.calories,
+    proteinG: dish.proteinG,
     createdAt: now(),
   };
 
@@ -215,7 +222,9 @@ export async function fetchDemoDishesForCycles(): Promise<Dish[]> {
       id: dish.id,
       name: dish.name,
       description: null,
-      photoUrl: dish.photoUrl,
+      photoUrl: null,
+      calories: dish.calories ?? null,
+      proteinG: dish.proteinG ?? null,
       ingredients: [],
     }))
     .sort((a, b) => a.name.localeCompare(b.name, "fr"));
@@ -442,7 +451,8 @@ export async function fetchDemoPlannedMeals(
         mealSlot: meal.mealSlot,
         dishId: meal.dishId,
         dishName: dish?.name ?? "",
-        dishPhotoUrl: dish?.photoUrl ?? null,
+        dishCalories: dish?.calories ?? null,
+        dishProteinG: dish?.proteinG ?? null,
         mealCycleId: meal.mealCycleId,
       };
     });
@@ -550,7 +560,7 @@ export async function applyDemoCycleToRange(
     const cycleOffset = ((diffDays % cycle.durationDays) + cycle.durationDays) % cycle.durationDays;
     const dateStr = toISODate(cursor);
 
-    for (const slot of ["breakfast", "lunch", "dinner"] as MealSlot[]) {
+    for (const slot of MEAL_SLOTS) {
       const entry = cycleEntriesByOffset.get(`${cycleOffset}-${slot}`);
       if (!entry) continue;
 

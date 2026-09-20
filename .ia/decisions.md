@@ -6,6 +6,45 @@ haut du fichier (ordre antéchronologique).
 
 ---
 
+## 2026-09-20 — Collation, apports nutritionnels et affichage personnalisable du Planning
+
+**Contexte** : demande de retirer la photo et le mot « Modèle » des cases
+du Planning, d'ajouter un créneau Collation, des calories/protéines par
+plat, et des cases à cocher pour masquer le petit-déjeuner/la collation
+et afficher les totaux du jour.
+
+**Décisions** :
+- **Collation = nouvelle valeur de l'enum `meal_slot_type`** (migration
+  0006, `add value 'snack' before 'dinner'`), et non un autre mécanisme :
+  `planned_meals` et `meal_cycle_entries` l'acceptent sans autre
+  changement, la répétition fonctionne donc aussi sur ce créneau.
+- **Calories et protéines = deux colonnes nullables sur `dishes`**
+  (migration 0007), pour une portion. `null` (non renseigné) est
+  distingué de 0 : un total qui ignore un plat sans valeur est marqué
+  « * » plutôt que présenté comme exact.
+- **Les totaux du jour ne comptent que les créneaux affichés** : masquer
+  le petit-déjeuner retire aussi ses calories du total, pour que la somme
+  corresponde à ce que l'on voit.
+- **Préférences d'affichage en `localStorage`** (par appareil), pas en
+  base : ce sont des conforts d'affichage, pas des données à partager
+  entre les deux comptes. Défaut : petit-déjeuner visible, collation et
+  totaux masqués.
+- **Repère « modèle » = cadre vert** (`.meal-cell-repeated`) au lieu du
+  libellé « Modèle ». Explication conservée dans le texte d'aide de la
+  barre « Répéter » et en infobulle.
+- **Photo retirée du Planning** (cases et sélecteur de plat) : plus
+  besoin de joindre `photo_url` aux requêtes du planning.
+
+**Alternatives écartées** : stocker les préférences d'affichage en base
+(surdimensionné pour 2 utilisateurs) ; une table d'apports séparée
+(complexité inutile pour deux valeurs par plat) ; une somme par semaine
+au lieu de par jour (la demande visait le total de chaque jour).
+
+**Migrations** : `0006_snack_meal_slot.sql`, `0007_dish_nutrition.sql`
+(à appliquer sur la base de production).
+
+---
+
 ## 2026-09-18 — Boutons « Vider », navigation calendrier, et repas planifié "vide" (dish_id nullable)
 
 **Contexte** : demande de deux fonctionnalités sur le Planning —

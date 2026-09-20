@@ -3,12 +3,14 @@ import { getSupabase } from "@/lib/supabase/client";
 import { fetchDemoDishesForCycles, isDemoMode } from "@/lib/localDemo";
 import type { Dish } from "@/features/dishes/types";
 import type { MealSlot } from "@/lib/supabase/database.types";
+import { MEAL_SLOTS } from "./types";
 
-export const MEAL_SLOTS: MealSlot[] = ["breakfast", "lunch", "dinner"];
+export { MEAL_SLOTS };
 
 export const MEAL_SLOT_LABELS: Record<MealSlot, string> = {
   breakfast: "Petit-déj",
   lunch: "Déjeuner",
+  snack: "Collation",
   dinner: "Dîner",
 };
 
@@ -23,9 +25,11 @@ export async function fetchDishesForCycles(): Promise<Dish[]> {
 
   const { data, error } = (await supabase
     .from("dishes")
-    .select("id, name, photo_url")
+    .select("id, name, calories, protein_g")
     .order("name")) as {
-    data: { id: string; name: string; photo_url: string | null }[] | null;
+    data:
+      | { id: string; name: string; calories: number | null; protein_g: number | null }[]
+      | null;
     error: PostgrestError | null;
   };
 
@@ -37,7 +41,9 @@ export async function fetchDishesForCycles(): Promise<Dish[]> {
     id: row.id,
     name: row.name,
     description: null,
-    photoUrl: row.photo_url,
+    photoUrl: null,
+    calories: row.calories,
+    proteinG: row.protein_g === null ? null : Number(row.protein_g),
     ingredients: [],
   }));
 }

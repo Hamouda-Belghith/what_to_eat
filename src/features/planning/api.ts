@@ -12,7 +12,7 @@ import {
 } from "@/lib/localDemo";
 import { addDays, parseISODate, toISODate } from "@/lib/date";
 import type { MealSlot } from "@/lib/supabase/database.types";
-import type { MealCycle } from "@/features/cycles/types";
+import { MEAL_SLOTS, type MealCycle } from "@/features/cycles/types";
 import type { PlannedMeal } from "./types";
 
 type Result<T> = { data: T[] | null; error: PostgrestError | null };
@@ -24,7 +24,7 @@ interface PlannedMealRow {
   meal_slot: MealSlot;
   dish_id: string | null;
   meal_cycle_id: string | null;
-  dishes?: { name: string; photo_url: string | null } | null;
+  dishes?: { name: string; calories: number | null; protein_g: number | null } | null;
 }
 
 interface OccupiedSlot {
@@ -66,7 +66,7 @@ export async function fetchPlannedMeals(
 
   const { data, error } = (await supabase
     .from("planned_meals")
-    .select("id, date, meal_slot, dish_id, meal_cycle_id, dishes(name, photo_url)")
+    .select("id, date, meal_slot, dish_id, meal_cycle_id, dishes(name, calories, protein_g)")
     .eq("user_id", userId)
     .gte("date", periodStart)
     .lte("date", periodEnd)) as Result<PlannedMealRow>;
@@ -86,7 +86,10 @@ export async function fetchPlannedMeals(
       mealSlot: row.meal_slot,
       dishId: row.dish_id,
       dishName: row.dishes?.name ?? "",
-      dishPhotoUrl: row.dishes?.photo_url ?? null,
+      dishCalories: row.dishes?.calories ?? null,
+      // numeric(6,1) : PostgREST peut le renvoyer sous forme de chaîne.
+      dishProteinG:
+        row.dishes?.protein_g == null ? null : Number(row.dishes.protein_g),
       mealCycleId: row.meal_cycle_id,
     }));
 }
@@ -317,7 +320,7 @@ export async function applyCycleToRange(
       ((diffDays % cycle.durationDays) + cycle.durationDays) % cycle.durationDays;
     const dateStr = toISODate(cursor);
 
-    for (const slot of ["breakfast", "lunch", "dinner"] as MealSlot[]) {
+    for (const slot of MEAL_SLOTS) {
       const entry = cycleEntriesByOffset.get(`${cycleOffset}-${slot}`);
       if (!entry) continue;
       const key = `${dateStr}-${slot}`;

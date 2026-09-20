@@ -1,8 +1,23 @@
 # État actuel du projet (résumé rapide)
 
-Date: 2026-09-18
+Date: 2026-09-20
 
 Résumé:
+- **Planning : affichage personnalisable, collation, apports** (2026-09-20) :
+  la photo du plat n'apparaît plus dans le Planning (cases ni sélecteur),
+  seulement sur l'écran Plats. Les cases issues du modèle de répétition
+  sont **encadrées en vert** (plus de mot « Modèle »). Un nouveau créneau
+  **Collation** (entre déjeuner et dîner) existe, et le panneau
+  « Affichage » du Planning permet de cocher/décocher : Petit-déjeuner,
+  Collation, Calories du jour, Protéines du jour (préférence mémorisée
+  dans `localStorage`, par appareil ; défaut : petit-déj visible,
+  collation et totaux masqués). Chaque plat a des champs optionnels
+  **calories** et **protéines** (pour une portion), affichés sur sa
+  fiche ; les totaux du jour n'additionnent que les créneaux affichés
+  et sont suffixés « * » si un plat n'a pas la valeur renseignée. Voir
+  `.ia/decisions.md` (2026-09-20). **Migrations à appliquer sur la base
+  de production** : `0006_snack_meal_slot.sql` et
+  `0007_dish_nutrition.sql`.
 - L'application compile et le build Next.js fonctionne (`npm run build`).
 - Le frontend a été **déployé sur Vercel** avec une URL de production.
 - Un **mode démo local** reste disponible si les variables Supabase ne sont
@@ -20,8 +35,8 @@ Résumé:
   a la même hauteur de ligne que `.meal-cell`). Voir
   `src/features/planning/PlanningScreen.tsx` et `src/app/globals.css`.
 - **Photo de plat** : chaque plat peut avoir une photo (upload depuis
-  l'écran Plats), affichée sur sa fiche, dans le sélecteur du planning
-  et sur les cases du planning. Stockée dans Supabase Storage (bucket
+  l'écran Plats), affichée sur sa fiche uniquement (retirée du
+  Planning le 2026-09-20). Stockée dans Supabase Storage (bucket
   `dish-photos`) en prod, en base64 dans `localStorage` en mode démo.
   Voir `.ia/decisions.md` (2026-09-18) et la migration
   `supabase/migrations/0004_dish_photos.sql` (à appliquer sur la base

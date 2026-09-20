@@ -66,7 +66,7 @@ Tables principales :
 | Table                  | Rôle                                                             |
 |------------------------|-------------------------------------------------------------------|
 | `ingredients`          | Référentiel unique des ingrédients                                |
-| `dishes`               | Plats (dont `photo_url`, voir plus bas)                           |
+| `dishes`               | Plats (dont `photo_url`, `calories`, `protein_g`, voir plus bas)  |
 | `dish_ingredients`     | Composition d'un plat (ingrédient + quantité + unité)              |
 | `meal_cycles`          | Motif unique de répétition (fréquence libre, en semaines), piloté depuis le Planning |
 | `meal_cycle_entries`   | Créneaux du motif (jour relatif + repas + plat)                        |
@@ -116,8 +116,23 @@ fichier dans le bucket Supabase Storage `dish-photos` (policies RLS :
 lecture publique, écriture scoping par dossier `user_id/...`). En mode
 démo local, la photo est encodée en base64 directement dans
 `localStorage` (pas de vrai stockage de fichiers disponible hors
-Supabase). Affichée sur la fiche plat, le sélecteur du planning et les
-cases du planning.
+Supabase). Affichée uniquement sur la fiche plat (écran Plats).
+
+**Créneaux de repas** : l'enum Postgres `meal_slot_type` vaut
+`breakfast | lunch | snack | dinner` (migration 0006 ajoute `snack`).
+La liste ordonnée côté code est `MEAL_SLOTS` dans
+`src/features/cycles/types.ts` (source unique, utilisée par le Planning,
+`applyCycleToRange` et le mode démo).
+
+**Apports nutritionnels** : `dishes.calories` (entier) et
+`dishes.protein_g` (numeric(6,1)), tous deux nullables — `null` = non
+renseigné, distinct de 0. Ils remontent dans `PlannedMeal`
+(`dishCalories`, `dishProteinG`) et `sumNutrition`
+(`src/features/planning/nutrition.ts`) calcule les totaux du jour.
+
+**Préférences d'affichage du Planning** (créneaux visibles, totaux) :
+stockées en `localStorage` par appareil (clés `planning-show-*`), pas en
+base — ce sont des préférences d'affichage, pas des données partagées.
 
 ## Stratégie offline (liste de courses uniquement)
 

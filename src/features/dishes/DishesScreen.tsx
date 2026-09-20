@@ -22,6 +22,22 @@ const UNITS = [
   "boîte",
 ];
 
+/** Champ numérique optionnel : vide = non renseigné (`null`), jamais 0 par défaut. */
+function parseOptionalAmount(value: string, decimals: number): number | null {
+  if (value.trim() === "") return null;
+  const n = Number(value.replace(",", "."));
+  if (!Number.isFinite(n) || n < 0) return null;
+  const factor = 10 ** decimals;
+  return Math.round(n * factor) / factor;
+}
+
+function formatNutrition(dish: Dish): string | null {
+  const parts: string[] = [];
+  if (dish.calories !== null) parts.push(`${formatQuantity(dish.calories)} kcal`);
+  if (dish.proteinG !== null) parts.push(`${formatQuantity(dish.proteinG)} g de protéines`);
+  return parts.length > 0 ? parts.join(" · ") : null;
+}
+
 function EmptyIngredientRow(): DishIngredient {
   return { ingredientId: "", ingredientName: "", quantity: 1, unit: "pièce" };
 }
@@ -36,6 +52,8 @@ export function DishesScreen() {
 
   const [name, setName] = useState("");
   const [description, setDescription] = useState("");
+  const [calories, setCalories] = useState("");
+  const [proteinG, setProteinG] = useState("");
   const [ingredients, setIngredients] = useState<DishIngredient[]>([]);
   const [ingredientSuggestions, setIngredientSuggestions] = useState<string[]>([]);
   const [photoPreview, setPhotoPreview] = useState<string | null>(null);
@@ -59,6 +77,8 @@ export function DishesScreen() {
     setEditing(null);
     setName("");
     setDescription("");
+    setCalories("");
+    setProteinG("");
     setIngredients([EmptyIngredientRow()]);
     setPhotoPreview(null);
     setPhotoChanged(false);
@@ -69,6 +89,8 @@ export function DishesScreen() {
     setEditing(dish);
     setName(dish.name);
     setDescription(dish.description ?? "");
+    setCalories(dish.calories === null ? "" : String(dish.calories));
+    setProteinG(dish.proteinG === null ? "" : String(dish.proteinG));
     setIngredients(
       dish.ingredients.length > 0 ? dish.ingredients : [EmptyIngredientRow()]
     );
@@ -102,6 +124,8 @@ export function DishesScreen() {
         id: editing?.id,
         name,
         description,
+        calories: parseOptionalAmount(calories, 0),
+        proteinG: parseOptionalAmount(proteinG, 1),
         ingredients: ingredients.filter((i) => i.ingredientName.trim() !== ""),
         photoUrl: photoChanged ? photoPreview : undefined,
       });
@@ -203,6 +227,13 @@ export function DishesScreen() {
                       {dish.description}
                     </p>
                   ) : null}
+                  {formatNutrition(dish) ? (
+                    <p
+                      style={{ margin: "0.2rem 0 0", fontSize: "0.85rem", fontWeight: 650 }}
+                    >
+                      {formatNutrition(dish)}
+                    </p>
+                  ) : null}
                 </div>
                 <div className="row" style={{ gap: "0.3rem" }}>
                   <Button size="sm" variant="ghost" onClick={() => openEdit(dish)}>
@@ -272,6 +303,37 @@ export function DishesScreen() {
               onChange={(e) => setDescription(e.target.value)}
               placeholder="Ex : la recette de grand-mère, 20 min de cuisson…"
             />
+
+            <div className="row" style={{ alignItems: "flex-start" }}>
+              <div style={{ flex: 1, minWidth: "8rem" }}>
+                <Field
+                  label="Calories (kcal, optionnel)"
+                  name="dish-calories"
+                  type="number"
+                  inputMode="numeric"
+                  min="0"
+                  step="1"
+                  value={calories}
+                  onChange={(e) => setCalories(e.target.value)}
+                  placeholder="Ex : 650"
+                  hint="Pour une portion."
+                />
+              </div>
+              <div style={{ flex: 1, minWidth: "8rem" }}>
+                <Field
+                  label="Protéines (g, optionnel)"
+                  name="dish-protein"
+                  type="number"
+                  inputMode="decimal"
+                  min="0"
+                  step="0.1"
+                  value={proteinG}
+                  onChange={(e) => setProteinG(e.target.value)}
+                  placeholder="Ex : 35"
+                  hint="Pour une portion."
+                />
+              </div>
+            </div>
 
             <div>
               <span

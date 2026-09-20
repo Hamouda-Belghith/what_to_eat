@@ -13,3 +13,6 @@ export interface MealCycle {
   startDate: string;
   entries: MealCycleEntry[];
 }
+
+/** Créneaux de repas dans l'ordre d'affichage de la journée. */
+export const MEAL_SLOTS: MealSlot[] = ["breakfast", "lunch", "snack", "dinner"];

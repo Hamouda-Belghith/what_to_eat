@@ -28,6 +28,8 @@ interface DishRow {
   name: string;
   description: string | null;
   photo_url: string | null;
+  calories: number | null;
+  protein_g: number | null;
 }
 
 function mapDishRow(row: DishRow, ingRows: IngredientRow[]): Dish {
@@ -36,6 +38,9 @@ function mapDishRow(row: DishRow, ingRows: IngredientRow[]): Dish {
     name: row.name,
     description: row.description,
     photoUrl: row.photo_url,
+    calories: row.calories,
+    // numeric(6,1) : PostgREST peut le renvoyer sous forme de chaîne.
+    proteinG: row.protein_g === null ? null : Number(row.protein_g),
     ingredients: ingRows.map((r) => ({
       ingredientId: r.ingredient_id,
       ingredientName: r.ingredients?.name ?? "",
@@ -58,7 +63,7 @@ export async function fetchDishes(): Promise<Dish[]> {
 
   const { data, error } = (await supabase
     .from("dishes")
-    .select("id, name, description, photo_url")
+    .select("id, name, description, photo_url, calories, protein_g")
     .eq("user_id", userId)
     .order("name")) as Result<DishRow>;
 
@@ -221,13 +226,15 @@ export async function saveDish(
     user_id: userId,
     name: dish.name.trim(),
     description: dish.description?.trim() || null,
+    calories: dish.calories,
+    protein_g: dish.proteinG,
   };
   if (photoUrl !== undefined) payload.photo_url = photoUrl;
 
   const savedResult = (await supabase
     .from("dishes")
     .upsert(payload as never, { onConflict: "id" } as never)
-    .select("id, name, description, photo_url")) as Result<DishRow>;
+    .select("id, name, description, photo_url, calories, protein_g")) as Result<DishRow>;
 
   if (savedResult.error || !savedResult.data?.[0]) {
     console.warn("Impossible d'enregistrer le plat", savedResult.error);

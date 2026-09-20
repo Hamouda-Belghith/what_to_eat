@@ -6,6 +6,7 @@ export interface PlannedMeal {
   mealSlot: MealSlot;
   dishId: string;
   dishName: string;
-  dishPhotoUrl: string | null;
+  dishCalories: number | null;
+  dishProteinG: number | null;
   mealCycleId: string | null;
 }
