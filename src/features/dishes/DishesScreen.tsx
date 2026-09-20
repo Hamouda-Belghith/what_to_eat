@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { Button } from "@/components/ui/Button";
 import { Modal } from "@/components/ui/Modal";
 import { Field, TextareaField } from "@/components/ui/Field";
@@ -59,6 +59,13 @@ export function DishesScreen() {
   const [photoPreview, setPhotoPreview] = useState<string | null>(null);
   const [photoChanged, setPhotoChanged] = useState(false);
   const [saving, setSaving] = useState(false);
+  // Erreur affichée dans la modale : le formulaire reste ouvert pour ne
+  // rien faire ressaisir.
+  const [formError, setFormError] = useState<string | null>(null);
+  // Identifiant d'un nouveau plat, fixé à l'ouverture du formulaire : si
+  // l'enregistrement échoue à mi-chemin puis est retenté, on réécrit le
+  // même plat au lieu d'en créer un second.
+  const draftId = useRef<string>("");
 
   async function load() {
     const [dishesResult, suggestionsResult] = await Promise.all([
@@ -74,6 +81,8 @@ export function DishesScreen() {
   }, []);
 
   function openCreate() {
+    draftId.current = crypto.randomUUID();
+    setFormError(null);
     setEditing(null);
     setName("");
     setDescription("");
@@ -86,6 +95,7 @@ export function DishesScreen() {
   }
 
   function openEdit(dish: Dish) {
+    setFormError(null);
     setEditing(dish);
     setName(dish.name);
     setDescription(dish.description ?? "");
@@ -119,9 +129,10 @@ export function DishesScreen() {
     if (!name.trim()) return;
     setSaving(true);
     setError(null);
+    setFormError(null);
     try {
-      const saved = await saveDish({
-        id: editing?.id,
+      await saveDish({
+        id: editing?.id ?? draftId.current,
         name,
         description,
         calories: parseOptionalAmount(calories, 0),
@@ -129,14 +140,16 @@ export function DishesScreen() {
         ingredients: ingredients.filter((i) => i.ingredientName.trim() !== ""),
         photoUrl: photoChanged ? photoPreview : undefined,
       });
-      if (!saved) {
-        setError("Impossible d'enregistrer le plat. Réessaie.");
-      }
-      setCreating(false);
-      await load();
-    } finally {
+    } catch (err) {
+      setFormError(
+        err instanceof Error ? err.message : "Impossible d'enregistrer le plat. Réessaie."
+      );
       setSaving(false);
+      return;
     }
+    setSaving(false);
+    setCreating(false);
+    await load();
   }
 
   async function handleDelete(dish: Dish) {
@@ -450,6 +463,12 @@ export function DishesScreen() {
                 <option key={suggestion} value={suggestion} />
               ))}
             </datalist>
+
+            {formError ? (
+              <p role="alert" style={{ margin: 0, color: "var(--danger)", fontWeight: 650 }}>
+                {formError}
+              </p>
+            ) : null}
 
             <div className="row" style={{ justifyContent: "flex-end" }}>
               <Button variant="ghost" onClick={() => setCreating(false)}>

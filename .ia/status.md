@@ -3,6 +3,19 @@
 Date: 2026-09-20
 
 Résumé:
+- **Erreurs d'enregistrement d'un plat, messages clairs** (2026-09-20) :
+  `saveDish` (`src/features/dishes/api.ts`) ne renvoie plus `null` en
+  silence : il lève une erreur au message lisible (pas de connexion,
+  session expirée, migration SQL manquante, photo qui n'a pas pu être
+  envoyée, ingrédient en double, sinon message technique entre
+  parenthèses), affichée **dans la modale** qui reste ouverte. Corrige
+  aussi : un ingrédient dont l'enregistrement échouait était ignoré sans
+  erreur (plat sauvegardé incomplet) ; l'ancienne photo était supprimée
+  avant de savoir si la sauvegarde réussissait ; un échec de rechargement
+  après sauvegarde affichait « Impossible d'enregistrer » alors que le
+  plat l'était ; un nouvel essai après échec pouvait créer un doublon
+  (l'identifiant du nouveau plat est maintenant fixé à l'ouverture du
+  formulaire).
 - **Planning : affichage personnalisable, collation, apports** (2026-09-20) :
   la photo du plat n'apparaît plus dans le Planning (cases ni sélecteur),
   seulement sur l'écran Plats. Les cases issues du modèle de répétition

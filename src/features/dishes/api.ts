@@ -114,12 +114,43 @@ export async function fetchIngredients(): Promise<string[]> {
   return data.map((row) => row.name);
 }
 
-async function upsertIngredient(name: string): Promise<string | null> {
-  const supabase = getSupabase();
-  if (!supabase) return null;
+const OFFLINE_MESSAGE =
+  "Pas de connexion internet : vérifie ta connexion puis réessaie.";
+const SESSION_MESSAGE =
+  "Ta session n'est plus valide. Déconnecte-toi, reconnecte-toi, puis réessaie.";
 
-  const userId = await getCurrentUserId();
-  if (!userId) return null;
+/**
+ * Traduit une erreur Supabase en message compréhensible. Les cas
+ * connus (réseau, session, migration manquante) ont un message dédié ;
+ * sinon `fallback` décrit l'étape qui a échoué et le message technique
+ * est ajouté entre parenthèses pour pouvoir diagnostiquer.
+ */
+function describeError(
+  fallback: string,
+  error: { code?: string; message?: string }
+): Error {
+  console.warn(fallback, error);
+  const message = error.message ?? "";
+  const offline = typeof navigator !== "undefined" && !navigator.onLine;
+  if (offline || /failed to fetch|networkerror|load failed/i.test(message)) {
+    return new Error(OFFLINE_MESSAGE);
+  }
+  if (error.code === "42501" || /row-level security|jwt/i.test(message)) {
+    return new Error(SESSION_MESSAGE);
+  }
+  // Colonne / table inconnue : une migration SQL n'a pas été appliquée.
+  if (["42703", "42P01", "PGRST204", "PGRST205"].includes(error.code ?? "")) {
+    return new Error(
+      "La base de données n'est pas à jour (migration SQL manquante). " +
+        "Préviens la personne qui gère l'application."
+    );
+  }
+  return new Error(`${fallback} (détail : ${message || error.code || "erreur inconnue"}).`);
+}
+
+async function upsertIngredient(userId: string, name: string): Promise<string> {
+  const supabase = getSupabase();
+  if (!supabase) throw new Error("Base de données non configurée.");
 
   // Upsert silencieux : même nom => même ligne (index unique sur user_id + name).
   const { data, error } = (await supabase
@@ -130,10 +161,9 @@ async function upsertIngredient(name: string): Promise<string | null> {
     )
     .select("id")) as Result<{ id: string }>;
 
-  if (error || !data?.[0]) {
-    console.warn("Impossible de créer l'ingrédient", name, error);
-    return null;
-  }
+  const fallback = `Impossible d'enregistrer l'ingrédient « ${name} »`;
+  if (error) throw describeError(fallback, error);
+  if (!data?.[0]) throw new Error(`${fallback}.`);
   return data[0].id;
 }
 
@@ -151,24 +181,28 @@ async function uploadDishPhoto(
   userId: string,
   dishId: string,
   dataUrl: string
-): Promise<string | null> {
+): Promise<string> {
   const supabase = getSupabase();
-  if (!supabase) return null;
+  if (!supabase) throw new Error("Base de données non configurée.");
 
-  const blob = await (await fetch(dataUrl)).blob();
-  const ext = blob.type.split("/")[1]?.split("+")[0] || "jpg";
-  const path = `${userId}/${dishId}-${Date.now()}.${ext}`;
+  const fallback =
+    "L'envoi de la photo a échoué (photo trop lourde ou connexion instable). " +
+    "Réessaie, ou enregistre le plat sans photo";
 
-  const { error } = await supabase.storage
-    .from(PHOTO_BUCKET)
-    .upload(path, blob, { upsert: true, contentType: blob.type });
+  try {
+    const blob = await (await fetch(dataUrl)).blob();
+    const ext = blob.type.split("/")[1]?.split("+")[0] || "jpg";
+    const path = `${userId}/${dishId}-${Date.now()}.${ext}`;
 
-  if (error) {
-    console.warn("Impossible d'envoyer la photo du plat", error);
-    return null;
+    const { error } = await supabase.storage
+      .from(PHOTO_BUCKET)
+      .upload(path, blob, { upsert: true, contentType: blob.type });
+    if (error) throw error;
+
+    return supabase.storage.from(PHOTO_BUCKET).getPublicUrl(path).data.publicUrl;
+  } catch (err) {
+    throw describeError(fallback, err as { code?: string; message?: string });
   }
-
-  return supabase.storage.from(PHOTO_BUCKET).getPublicUrl(path).data.publicUrl;
 }
 
 async function deleteDishPhoto(photoUrl: string): Promise<void> {
@@ -180,18 +214,44 @@ async function deleteDishPhoto(photoUrl: string): Promise<void> {
   if (error) console.warn("Impossible de supprimer la photo du plat", error);
 }
 
+/**
+ * Enregistre un plat (création ou modification). Lève une `Error` au
+ * message lisible par l'utilisateur en cas d'échec — jamais d'échec
+ * silencieux, sinon un plat peut être enregistré sans certains
+ * ingrédients sans que personne ne le sache.
+ */
 export async function saveDish(
   dish: Omit<Dish, "id" | "photoUrl"> & { id?: string; photoUrl?: string | null }
-): Promise<Dish | null> {
+): Promise<void> {
+  // La base refuse deux fois le même ingrédient dans un plat (unique
+  // dish_id + ingredient_id) : on prévient avant d'écrire quoi que ce soit.
+  const seen = new Set<string>();
+  for (const ing of dish.ingredients) {
+    const name = ing.ingredientName.trim();
+    if (!name) continue;
+    if (seen.has(name.toLowerCase())) {
+      throw new Error(
+        `L'ingrédient « ${name} » apparaît plusieurs fois dans ce plat. ` +
+          "Garde une seule ligne et additionne les quantités."
+      );
+    }
+    seen.add(name.toLowerCase());
+  }
+
   if (isDemoMode()) {
-    return saveDemoDish(dish);
+    if (!(await saveDemoDish(dish))) throw new Error("Le nom du plat est obligatoire.");
+    return;
   }
 
   const supabase = getSupabase();
-  if (!supabase) return null;
+  if (!supabase) throw new Error("Base de données non configurée.");
+
+  if (typeof navigator !== "undefined" && !navigator.onLine) {
+    throw new Error(OFFLINE_MESSAGE);
+  }
 
   const userId = await getCurrentUserId();
-  if (!userId) return null;
+  if (!userId) throw new Error(SESSION_MESSAGE);
 
   const dishId = dish.id ?? crypto.randomUUID();
 
@@ -208,17 +268,17 @@ export async function saveDish(
     photoUrl = dish.photoUrl;
   }
 
+  // Mémorise l'ancienne photo pour la supprimer une fois le plat
+  // réellement enregistré (jamais avant : un échec laisserait sinon le
+  // plat pointer vers un fichier supprimé).
+  let previousUrl: string | null | undefined;
   if (dish.photoUrl !== undefined && dish.id) {
-    // La photo a changé (nouvelle ou retirée) : nettoie l'ancien fichier.
     const previous = (await supabase
       .from("dishes")
       .select("photo_url")
       .eq("id", dish.id)
       .limit(1)) as Result<{ photo_url: string | null }>;
-    const previousUrl = previous.data?.[0]?.photo_url;
-    if (previousUrl && previousUrl !== photoUrl) {
-      await deleteDishPhoto(previousUrl);
-    }
+    previousUrl = previous.data?.[0]?.photo_url;
   }
 
   const payload: Record<string, unknown> = {
@@ -234,11 +294,17 @@ export async function saveDish(
   const savedResult = (await supabase
     .from("dishes")
     .upsert(payload as never, { onConflict: "id" } as never)
-    .select("id, name, description, photo_url, calories, protein_g")) as Result<DishRow>;
+    .select("id")) as Result<{ id: string }>;
 
-  if (savedResult.error || !savedResult.data?.[0]) {
-    console.warn("Impossible d'enregistrer le plat", savedResult.error);
-    return null;
+  if (savedResult.error) {
+    throw describeError("Impossible d'enregistrer le plat", savedResult.error);
+  }
+  if (!savedResult.data?.[0]) {
+    throw new Error("Impossible d'enregistrer le plat (aucune ligne enregistrée).");
+  }
+
+  if (previousUrl && previousUrl !== photoUrl) {
+    await deleteDishPhoto(previousUrl);
   }
 
   const { error: delError } = (await supabase
@@ -246,16 +312,14 @@ export async function saveDish(
     .delete()
     .eq("dish_id", dishId)) as MutateResult;
   if (delError) {
-    console.warn("Impossible de remplacer les ingrédients du plat", delError);
-    return null;
+    throw describeError("Impossible de mettre à jour les ingrédients du plat", delError);
   }
 
   for (const ing of dish.ingredients) {
     const name = ing.ingredientName.trim();
     if (!name) continue;
 
-    const ingredientId = await upsertIngredient(name);
-    if (!ingredientId) continue;
+    const ingredientId = await upsertIngredient(userId, name);
 
     const { error: insertError } = (await supabase
       .from("dish_ingredients")
@@ -266,11 +330,9 @@ export async function saveDish(
         unit: ing.unit.trim() || "pièce",
       } as never)) as MutateResult;
     if (insertError) {
-      console.warn("Impossible d'ajouter un ingrédient au plat", insertError);
+      throw describeError(`Impossible d'ajouter l'ingrédient « ${name} » au plat`, insertError);
     }
   }
-
-  return (await fetchDishes()).find((d) => d.id === dishId) ?? null;
 }
 
 export async function deleteDish(id: string): Promise<void> {
