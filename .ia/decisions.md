@@ -6,6 +6,67 @@ haut du fichier (ordre antéchronologique).
 
 ---
 
+## 2026-09-22 — Correctif : contraintes unique globales héritées, bloquant le Planning et l'export de la liste de courses
+
+**Contexte** : l'utilisateur signale « Enregistrement du repas
+impossible » en essayant de planifier un repas. En inspectant
+directement le schéma de production (voir `.ia/agents.md`,
+« Déploiement et application des migrations »), trois contraintes
+`unique` **non scopées par `user_id`** coexistaient avec leur
+équivalent correctement scopé, héritées d'avant
+`0002_user_scoping.sql` et jamais nettoyées :
+
+- `planned_meals_date_meal_slot_key` (date, meal_slot) à côté de
+  `idx_planned_meals_user_date_slot` (user_id, date, meal_slot).
+- `ingredients_name_key` (name) à côté de `idx_ingredients_user_id_name`
+  (user_id, name).
+- `shopping_list_items_ingredient_id_period_start_period_end_key`
+  (ingredient_id, period_start, period_end — sans unité ni section) à
+  côté de `idx_shopping_list_items_user_ingredient_unit_period_section`
+  (ajouté en 0009).
+
+Le code utilise partout `upsert(..., { onConflict: "user_id, ..." })` :
+pour un utilisateur qui n'a pas encore de ligne sur cette clé, Postgres
+tente un `INSERT` simple, qui passe l'index scopé (aucun conflit pour
+CET utilisateur) mais heurte l'ancienne contrainte globale dès qu'UN
+AUTRE utilisateur (ou une autre section, pour la liste de courses)
+occupe déjà cette même clé. Reproduit et confirmé directement en base
+avant correctif (voir `apply3.js`/diagnostics de la session, non
+committés — outillage jetable comme documenté dans `agents.md`) :
+- planifier un repas déjà pris par l'autre compte → **échec** (c'est le
+  bug signalé) ;
+- exporter une section de la liste de courses vers la liste finale, dès
+  qu'un ingrédient est déjà présent dans le résultat exporté (cas
+  courant) → **échec silencieux côté base**, alors que la démo locale
+  (Dexie, sans ces contraintes) ne le montrait pas — d'où le fait que
+  ça n'avait pas été détecté avant mise en prod ;
+- créer un plat avec un ingrédient déjà utilisé par l'autre compte →
+  **échec**.
+
+**Décision** : supprimer les trois contraintes obsolètes
+(`0010_drop_stale_global_unique_constraints.sql`). Les index scopés par
+utilisateur (et par section, pour la liste de courses) qui existent déjà
+à côté suffisent à garantir l'absence de doublon utile ; les anciennes
+ne faisaient qu'empêcher deux comptes d'utiliser indépendamment la même
+date/créneau ou le même nom d'ingrédient — jamais l'intention du
+produit. Réappliqué et revérifié en reproduisant les trois échecs
+ci-dessus : les trois passent désormais.
+
+**Limite non résolue, à signaler** : `agents.md` affirme « les données
+sont partagées entre les deux comptes » (pas de séparation par
+utilisateur), mais l'implémentation réelle (RLS + `user_id` sur toutes
+les tables, depuis `0002_user_scoping.sql`) fait l'inverse : chaque
+compte a ses propres plats, planning et liste de courses, invisibles de
+l'autre compte. Cette contradiction entre l'intention documentée et le
+comportement réel est **antérieure à cette tâche** et n'a pas été
+retranchée ici (changement structurant, hors périmètre du bug signalé —
+à clarifier avec l'utilisateur avant d'y toucher).
+
+**Migration** : `0010_drop_stale_global_unique_constraints.sql`,
+appliquée en production le 2026-09-22 (voir `.ia/agents.md`).
+
+---
+
 ## 2026-09-22 — Repas spécial « Manger dehors » et liste de courses en trois sections
 
 **Contexte** : demande de pouvoir choisir, sur une case du Planning,

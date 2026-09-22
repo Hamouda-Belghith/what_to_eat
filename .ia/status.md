@@ -3,6 +3,20 @@
 Date: 2026-09-22
 
 Résumé:
+- **Correctif prod : contraintes unique globales héritées, bloquant le
+  Planning et l'export de la liste de courses** (2026-09-22). Trois
+  contraintes non scopées par `user_id` (leftovers d'avant
+  `0002_user_scoping.sql`) empêchaient : planifier un repas sur un
+  jour/créneau déjà utilisé par l'autre compte (c'était le bug
+  signalé « Enregistrement du repas impossible ») ; exporter une
+  section de la liste de courses dès qu'un ingrédient était déjà
+  présent dans le résultat ; créer un plat avec un ingrédient déjà
+  utilisé par l'autre compte. Supprimées via
+  `0010_drop_stale_global_unique_constraints.sql`, appliquée en
+  production et revérifiée. Voir `.ia/decisions.md` pour le détail
+  (dont une incohérence documentée mais non résolue : `agents.md` dit
+  les données partagées entre les 2 comptes, la réalité du schéma dit
+  le contraire).
 - **Migrations `0008` et `0009` appliquées en production** (2026-09-22),
   via `SUPABASE_SESSION_POOLER_URI` — voir `.ia/agents.md`, section
   « Déploiement et application des migrations ». Les colonnes/contraintes/
