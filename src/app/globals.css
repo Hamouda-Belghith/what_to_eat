@@ -957,4 +957,23 @@ button {
   .nav-brand {
     display: none;
   }
+
+  /* 4 onglets + le bouton Déconnexion ne tiennent plus sur une seule
+     ligne à cette largeur : au lieu de les laisser retomber sur une
+     deuxième ligne (nav qui grandit, contenu poussé vers le bas), la
+     barre d'onglets défile horizontalement et reste sur une ligne. */
+  .nav-links {
+    flex-wrap: nowrap;
+    overflow-x: auto;
+    -webkit-overflow-scrolling: touch;
+    scrollbar-width: none;
+  }
+
+  .nav-links::-webkit-scrollbar {
+    display: none;
+  }
+
+  .nav-link {
+    flex-shrink: 0;
+  }
 }
