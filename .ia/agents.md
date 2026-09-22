@@ -117,15 +117,27 @@ Supabase, exécuté à chaque push) sans qu'il ait à le refaire lui-même.
   dans le SQL Editor en secours pour ce cas précis — ne pas improviser
   une autre méthode risquée.
 
-**Connexion à utiliser** : `SUPABASE_DB_URI` dans `.env` est une
-connexion Postgres **directe** dont l'hôte (`db.<ref>.supabase.co`) n'a
-pas d'adresse IPv4 — injoignable depuis un environnement sans sortie
-IPv6 (cas rencontré le 2026-09-22). Pour que l'application automatique
-fonctionne dans ce cas, il faut la chaîne du **connection pooler**
-Supabase (Supavisor, compatible IPv4) : Project Settings → Database →
-Connection pooling (mode Session ou Transaction), à ajouter dans `.env`
-sous `SUPABASE_DB_POOLER_URI` — jamais commité (voir `.gitignore`).
-Utiliser cette variable en priorité si elle existe.
+**Connexion à utiliser** : `SUPABASE_SESSION_POOLER_URI` dans `.env`
+(chaîne du **Session pooler** Supabase/Supavisor — Project Settings →
+Database → Connect → Session pooler). Fonctionne (testé le
+2026-09-22) : contrairement à `SUPABASE_DB_URI` (connexion directe,
+hôte `db.<ref>.supabase.co`, IPv6 uniquement — injoignable depuis un
+environnement sans sortie IPv6), le pooler résout en IPv4. Préférer le
+mode **Session** au mode **Transaction** pour des migrations (DDL) :
+une session dédiée, pas de comportement surprenant de pgbouncer en
+mode transaction.
+
+**Comment exécuter une migration** : pas de client Postgres dans les
+dépendances du projet (`pg` n'est utile qu'à l'assistant, pas à
+l'app — ne pas l'ajouter à `package.json`, voir « Principes de
+conception »). Installer `pg` dans un dossier temporaire (scratchpad,
+hors du dépôt), s'y connecter avec `SUPABASE_SESSION_POOLER_URI` et
+`ssl: { rejectUnauthorized: false }`, exécuter le contenu du fichier
+`.sql` dans une transaction (`BEGIN`/`COMMIT`, `ROLLBACK` si erreur).
+Vérifier avant/après via `information_schema.columns` /
+`pg_constraint` / `pg_indexes` que les objets attendus n'existaient pas
+puis existent, plutôt que de supposer que ça a marché. Supprimer le
+dossier temporaire une fois fait.
 
 ## Contraintes produit à respecter (ne pas remettre en cause sans le signaler)
 

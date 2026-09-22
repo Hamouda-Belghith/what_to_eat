@@ -3,6 +3,10 @@
 Date: 2026-09-22
 
 Résumé:
+- **Migrations `0008` et `0009` appliquées en production** (2026-09-22),
+  via `SUPABASE_SESSION_POOLER_URI` — voir `.ia/agents.md`, section
+  « Déploiement et application des migrations ». Les colonnes/contraintes/
+  index attendus ont été vérifiés présents après coup.
 - **Repas spécial « Manger dehors » + liste de courses en 3 sections**
   (2026-09-22) : sur une case du Planning, on peut choisir « Manger
   dehors » à la place d'un plat (pas d'ingrédients, jamais compté dans
