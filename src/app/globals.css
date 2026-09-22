@@ -622,6 +622,15 @@ button {
   box-shadow: inset 0 0 0 1px var(--accent-dark);
 }
 
+/* Repas spécial (ex. « Manger dehors ») : pas un plat, distingué par un
+   fond neutre et une bordure en tirets fins plutôt que le cadre plein
+   utilisé pour les cases issues du motif de répétition. */
+.meal-cell-special {
+  background: var(--paper-deep);
+  border-style: dashed;
+  font-style: italic;
+}
+
 .meal-cell:disabled {
   opacity: 0.6;
   cursor: not-allowed;
@@ -724,6 +733,12 @@ button {
 .dish-pick-item:hover {
   border-color: #9ccbb4;
   background: var(--accent-soft);
+}
+
+.dish-pick-special {
+  border-style: dashed;
+  font-style: italic;
+  color: var(--muted);
 }
 
 .dish-card-photo {

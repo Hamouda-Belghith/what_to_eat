@@ -11,6 +11,7 @@ import {
 import { addDays, parseISODate, toISODate } from "@/lib/date";
 import type { MealSlot } from "@/lib/supabase/database.types";
 import type { MealCycle, MealCycleEntry } from "@/features/cycles/types";
+import { SPECIAL_MEAL_LABELS, type SpecialMeal } from "./types";
 import {
   applyCycleToRange,
   clearAllPlannedMeals,
@@ -153,13 +154,19 @@ async function snapshotEntries(
   const start = parseISODate(weekStartISO);
   const msPerDay = 24 * 60 * 60 * 1000;
 
-  return meals.map((meal) => ({
-    dayOffset: Math.round(
-      (parseISODate(meal.date).getTime() - start.getTime()) / msPerDay
-    ),
-    mealSlot: meal.mealSlot,
-    dishId: meal.dishId,
-  }));
+  // Un repas spécial (ex. « Manger dehors ») n'a pas de dishId : il ne
+  // peut pas intégrer le motif de répétition (voir `setMealWithScope`),
+  // on l'exclut du snapshot plutôt que de le laisser produire une entrée
+  // invalide.
+  return meals
+    .filter((meal): meal is typeof meal & { dishId: string } => meal.dishId !== null)
+    .map((meal) => ({
+      dayOffset: Math.round(
+        (parseISODate(meal.date).getTime() - start.getTime()) / msPerDay
+      ),
+      mealSlot: meal.mealSlot,
+      dishId: meal.dishId,
+    }));
 }
 
 async function upsertPattern(params: {
@@ -277,6 +284,7 @@ async function applyForward(
 export interface RepeatConflict {
   date: string;
   mealSlot: MealSlot;
+  /** Nom du plat, ou libellé du repas spécial (ex. « Manger dehors »). */
   dishName: string;
 }
 
@@ -311,7 +319,9 @@ export async function findRepeatConflicts(
     const offset = dayOffsetForDate(meal.date, weekStartISO, durationDays);
     const entry = entriesByOffset.get(`${offset}-${meal.mealSlot}`);
     if (entry && entry.dishId !== meal.dishId) {
-      conflicts.push({ date: meal.date, mealSlot: meal.mealSlot, dishName: meal.dishName });
+      const dishName =
+        meal.dishName ?? (meal.special ? SPECIAL_MEAL_LABELS[meal.special] : "");
+      conflicts.push({ date: meal.date, mealSlot: meal.mealSlot, dishName });
     }
   }
 
@@ -380,13 +390,25 @@ export async function ensurePatternApplied(
  * - this_week : override local (meal_cycle_id null)
  * - all_future : met à jour le motif + les occurrences futures liées
  */
+/**
+ * Modifie un créneau. `special` (ex. « Manger dehors ») est mutuellement
+ * exclusif avec `dishId` et ne fait jamais partie du motif de répétition
+ * (pas de sens pour "toutes les semaines à venir") : le choisir applique
+ * toujours un override "cette semaine seulement", quel que soit `scope`.
+ */
 export async function setMealWithScope(
   date: string,
   mealSlot: MealSlot,
   dishId: string | null,
-  scope: MealEditScope | null
+  scope: MealEditScope | null,
+  special: SpecialMeal | null = null
 ): Promise<void> {
   const pattern = await fetchSinglePattern();
+
+  if (special) {
+    await setPlannedMeal(date, mealSlot, null, null, special);
+    return;
+  }
 
   if (!pattern || !scope || scope === "this_week") {
     if (dishId === null) {

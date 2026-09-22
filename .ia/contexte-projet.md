@@ -21,6 +21,9 @@ accueillir d'autres foyers pour l'instant.
   petit-déjeuner, déjeuner, collation et dîner. Le petit-déjeuner et la
   collation peuvent être masqués depuis le panneau « Affichage » du
   Planning. Les cases issues de la répétition sont encadrées en vert.
+- Sur une case du planning, choisir un repas « spécial » (ex. « Manger
+  dehors ») à la place d'un plat : ne compte pas dans la liste de
+  courses, ne fait jamais partie du motif de répétition.
 - Rendre une semaine répétitive depuis le Planning, avec une fréquence
   libre choisie par l'utilisateur (« toutes les N semaines », pas
   seulement 1 ou 2). Pas d'onglet ni de ressource « Cycles » séparée —
@@ -43,8 +46,13 @@ accueillir d'autres foyers pour l'instant.
   ingrédients des plats planifiés sur une période).
 - Permettre à l'utilisateur de vérifier ce qu'il lui manque avant de
   faire les courses (liste de courses cochable).
-- La liste de courses doit être consultable et modifiable hors-ligne
-  (usage typique : au supermarché, sans réseau).
+- La liste de courses se compose de trois sections : celle générée
+  depuis les plats planifiés, celle des courses ajoutées à la main
+  (hors plats), et la liste finale qu'on emmène au supermarché —
+  remplie en « exportant » les deux premières vers elle. La liste
+  finale doit être consultable et modifiable hors-ligne (usage typique :
+  au supermarché, sans réseau) ; générer/ajouter/exporter suppose une
+  connexion réseau (comme le reste de l'app hors liste de courses).
 - Rechercher un plat par son nom (ou sa description) depuis l'écran
   Plats, pour retrouver rapidement une recette au fur et à mesure que
   la liste s'agrandit.

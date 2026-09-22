@@ -1,19 +1,12 @@
 import type { PostgrestError } from "@supabase/supabase-js";
 import { useLiveQuery } from "dexie-react-hooks";
-import { getDb } from "@/lib/db/dexie";
+import { getDb, type LocalShoppingListItem } from "@/lib/db/dexie";
 import { getCurrentUserId, getSupabase } from "@/lib/supabase/client";
 import { queueMutation } from "./syncQueue";
 import type { ShoppingListItem } from "./types";
 import { isDemoMode } from "@/lib/localDemo";
 
-function mapItem(item: {
-  id: string;
-  ingredientId: string;
-  ingredientName: string;
-  quantity: number;
-  unit: string;
-  isChecked: boolean;
-}): ShoppingListItem {
+function mapItem(item: LocalShoppingListItem): ShoppingListItem {
   return {
     id: item.id,
     ingredientId: item.ingredientId,
@@ -21,6 +14,8 @@ function mapItem(item: {
     quantity: item.quantity,
     unit: item.unit,
     isChecked: item.isChecked,
+    section: item.section,
+    originSection: item.originSection,
   };
 }
 
@@ -111,7 +106,7 @@ export async function refreshShoppingList(
   const { data, error } = (await supabase
     .from("shopping_list_items")
     .select(
-      "id, ingredient_id, quantity, unit, is_checked, updated_at, ingredients(name)"
+      "id, ingredient_id, quantity, unit, is_checked, section, origin_section, updated_at, ingredients(name)"
     )
     .eq("user_id", userId)
     .eq("period_start", periodStart)
@@ -122,6 +117,8 @@ export async function refreshShoppingList(
       quantity: number;
       unit: string;
       is_checked: boolean;
+      section: "dishes" | "extra" | "final";
+      origin_section: "dishes" | "extra" | null;
       updated_at: string;
       ingredients: { name: string } | null;
     }> | null;
@@ -156,33 +153,36 @@ export async function refreshShoppingList(
       quantity: row.quantity,
       unit: row.unit,
       isChecked: row.is_checked,
+      section: row.section,
+      originSection: row.origin_section,
       updatedAt: row.updated_at,
     }))
   );
 }
 
-/** Vide le cache Dexie pour une période (avant régénération). */
+/**
+ * Vide le cache Dexie pour une période (avant régénération), limité à
+ * une section si fournie (sinon toutes les sections).
+ */
 export async function clearLocalShoppingListPeriod(
   periodStart: string,
-  periodEnd: string
+  periodEnd: string,
+  section?: LocalShoppingListItem["section"]
 ): Promise<void> {
+  const matches = (item: LocalShoppingListItem) =>
+    item.periodStart === periodStart &&
+    item.periodEnd === periodEnd &&
+    (section === undefined || item.section === section);
+
   const userId = await getCurrentUserId();
   if (!userId) {
-    await getDb()
-      .shoppingListItems.filter(
-        (item) =>
-          item.periodStart === periodStart && item.periodEnd === periodEnd
-      )
-      .delete();
+    await getDb().shoppingListItems.filter(matches).delete();
     return;
   }
 
   await getDb()
     .shoppingListItems.where("userId")
     .equals(userId)
-    .filter(
-      (item) =>
-        item.periodStart === periodStart && item.periodEnd === periodEnd
-    )
+    .filter(matches)
     .delete();
 }

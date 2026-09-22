@@ -35,7 +35,7 @@ import {
   type RepeatInterval,
 } from "./repeat";
 import { sumNutrition } from "./nutrition";
-import type { PlannedMeal } from "./types";
+import { SPECIAL_MEAL_LABELS, type PlannedMeal, type SpecialMeal } from "./types";
 
 const WEEK_DAYS = 7;
 const DAY_LABELS = ["Lun", "Mar", "Mer", "Jeu", "Ven", "Sam", "Dim"];
@@ -336,16 +336,30 @@ export function PlanningScreen() {
     void applyEdit(date, mealSlot, dishId, null);
   }
 
+  /**
+   * Un repas spécial (ex. « Manger dehors ») ne peut pas faire partie du
+   * motif de répétition (voir `setMealWithScope`) : le choisir applique
+   * toujours un override "cette semaine seulement", sans passer par la
+   * question de portée même si un motif est actif.
+   */
+  function handlePickSpecial(special: SpecialMeal) {
+    if (!editingCell) return;
+    const { date, mealSlot } = editingCell;
+    setEditingCell(null);
+    void applyEdit(date, mealSlot, null, "this_week", special);
+  }
+
   async function applyEdit(
     date: string,
     mealSlot: MealSlot,
     dishId: string | null,
-    scope: MealEditScope | null
+    scope: MealEditScope | null,
+    special: SpecialMeal | null = null
   ) {
     setBusy(true);
     setError(null);
     try {
-      await setMealWithScope(date, mealSlot, dishId, scope);
+      await setMealWithScope(date, mealSlot, dishId, scope, special);
       await loadMeals();
     } catch (err) {
       setError(err instanceof Error ? err.message : "Action impossible");
@@ -588,7 +602,7 @@ export function PlanningScreen() {
                       type="button"
                       className={`meal-cell ${meal ? "" : "meal-cell-empty"} ${
                         meal?.mealCycleId ? "meal-cell-repeated" : ""
-                      }`}
+                      } ${meal?.special ? "meal-cell-special" : ""}`}
                       title={
                         meal?.mealCycleId
                           ? "Fait partie du modèle de répétition actif (barre « Répéter » en haut). Le modifier proposera de choisir : cette semaine seulement, ou le modèle pour toutes les semaines à venir."
@@ -598,7 +612,9 @@ export function PlanningScreen() {
                       disabled={busy}
                     >
                       {meal ? (
-                        <span className="meal-cell-name">{meal.dishName}</span>
+                        <span className="meal-cell-name">
+                          {meal.special ? SPECIAL_MEAL_LABELS[meal.special] : meal.dishName}
+                        </span>
                       ) : (
                         <span>+</span>
                       )}
@@ -695,6 +711,14 @@ export function PlanningScreen() {
                 style={{ color: "var(--danger)" }}
               >
                 Retirer le repas
+              </button>
+              <button
+                type="button"
+                className="dish-pick-item dish-pick-special"
+                onClick={() => handlePickSpecial("eating_out")}
+              >
+                <span aria-hidden="true">🍽️</span>
+                {SPECIAL_MEAL_LABELS.eating_out}
               </button>
               {dishes.map((dish) => (
                 <button

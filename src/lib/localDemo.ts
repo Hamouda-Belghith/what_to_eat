@@ -1,8 +1,8 @@
 import type { MealSlot } from "@/lib/supabase/database.types";
 import type { Dish, DishIngredient } from "@/features/dishes/types";
 import { MEAL_SLOTS, type MealCycle, type MealCycleEntry } from "@/features/cycles/types";
-import type { PlannedMeal } from "@/features/planning/types";
-import { getDb } from "./db/dexie";
+import type { PlannedMeal, SpecialMeal } from "@/features/planning/types";
+import { getDb, type LocalShoppingListItem } from "./db/dexie";
 import { DEMO_USER_ID, getSupabase } from "./supabase/client";
 import { addDays, toISODate } from "./date";
 
@@ -56,6 +56,8 @@ interface DemoPlannedMeal {
   mealSlot: MealSlot;
   dishId: string | null;
   mealCycleId: string | null;
+  // Absent des états sauvegardés avant l'ajout des repas spéciaux.
+  special?: SpecialMeal | null;
   createdAt: string;
 }
 
@@ -438,21 +440,26 @@ export async function fetchDemoPlannedMeals(
   periodEnd: string
 ): Promise<PlannedMeal[]> {
   const state = loadState();
-  // dishId null = case explicitement vidée (voir setMealWithScope) : ne
-  // représente pas un vrai repas, on la cache de tout le reste de l'app.
+  // dishId et special tous deux null = case explicitement vidée (voir
+  // setMealWithScope) : ne représente pas un vrai repas, on la cache de
+  // tout le reste de l'app. Un repas spécial (dishId null, special
+  // renseigné) reste affiché.
   return state.plannedMeals
     .filter((meal) => meal.date >= periodStart && meal.date <= periodEnd)
-    .filter((meal): meal is DemoPlannedMeal & { dishId: string } => meal.dishId !== null)
+    .filter((meal) => meal.dishId !== null || meal.special)
     .map((meal) => {
-      const dish = state.dishes.find((d) => d.id === meal.dishId);
+      const dish = meal.dishId
+        ? state.dishes.find((d) => d.id === meal.dishId)
+        : undefined;
       return {
         id: meal.id,
         date: meal.date,
         mealSlot: meal.mealSlot,
         dishId: meal.dishId,
-        dishName: dish?.name ?? "",
+        dishName: dish?.name ?? null,
         dishCalories: dish?.calories ?? null,
         dishProteinG: dish?.proteinG ?? null,
+        special: meal.special ?? null,
         mealCycleId: meal.mealCycleId,
       };
     });
@@ -482,7 +489,8 @@ export async function setDemoPlannedMeal(
   date: string,
   mealSlot: MealSlot,
   dishId: string | null,
-  mealCycleId: string | null = null
+  mealCycleId: string | null = null,
+  special: SpecialMeal | null = null
 ): Promise<void> {
   const state = loadState();
   const existingIndex = state.plannedMeals.findIndex(
@@ -494,6 +502,7 @@ export async function setDemoPlannedMeal(
       ...state.plannedMeals[existingIndex],
       dishId,
       mealCycleId,
+      special,
       createdAt: now(),
     };
   } else {
@@ -503,6 +512,7 @@ export async function setDemoPlannedMeal(
       mealSlot,
       dishId,
       mealCycleId,
+      special,
       createdAt: now(),
     });
   }
@@ -594,7 +604,11 @@ export async function generateDemoShoppingList(
 ): Promise<{ count: number }> {
   const state = loadState();
 
-  const planned = await fetchDemoPlannedMeals(periodStart, periodEnd);
+  // Un repas spécial (ex. « Manger dehors ») n'a pas de dishId et n'a
+  // jamais d'ingrédients.
+  const planned = (await fetchDemoPlannedMeals(periodStart, periodEnd)).filter(
+    (meal): meal is typeof meal & { dishId: string } => meal.dishId !== null
+  );
   if (planned.length === 0) {
     throw new Error("Aucun repas planifié sur cette période");
   }
@@ -635,34 +649,15 @@ export async function generateDemoShoppingList(
   const db = getDb();
   const userId = DEMO_USER_ID;
   await db.shoppingListItems
-    .where("userId")
-    .equals(userId)
     .filter(
       (item) =>
-        item.periodStart === periodStart && item.periodEnd === periodEnd
+        item.periodStart === periodStart &&
+        item.periodEnd === periodEnd &&
+        item.section === "dishes"
     )
     .delete();
 
-  // Sécurité : retire aussi d'éventuelles lignes orphelines de la même période.
-  await db.shoppingListItems
-    .filter(
-      (item) =>
-        item.periodStart === periodStart && item.periodEnd === periodEnd
-    )
-    .delete();
-
-  const rows: Array<{
-    id: string;
-    userId: string;
-    ingredientId: string;
-    ingredientName: string;
-    periodStart: string;
-    periodEnd: string;
-    quantity: number;
-    unit: string;
-    isChecked: boolean;
-    updatedAt: string;
-  }> = [];
+  const rows: LocalShoppingListItem[] = [];
 
   for (const [ingredientId, unitTotals] of totals) {
     for (const [unit, quantity] of unitTotals) {
@@ -676,10 +671,138 @@ export async function generateDemoShoppingList(
         quantity,
         unit,
         isChecked: false,
+        section: "dishes",
+        originSection: null,
         updatedAt: now(),
       });
     }
   }
+
+  await db.shoppingListItems.bulkAdd(rows);
+  return { count: rows.length };
+}
+
+/**
+ * Ajoute un article à la section « extra ». Fusionne avec un article
+ * existant de même ingrédient + unité sur la période (quantités
+ * additionnées) plutôt que de dupliquer une ligne.
+ */
+export async function addDemoExtraItem(
+  periodStart: string,
+  periodEnd: string,
+  name: string,
+  quantity: number,
+  unit: string
+): Promise<void> {
+  const trimmedName = name.trim();
+  if (!trimmedName) throw new Error("Le nom de l'article est obligatoire.");
+  if (!Number.isFinite(quantity) || quantity <= 0) {
+    throw new Error("La quantité doit être un nombre supérieur à 0.");
+  }
+  const normalizedUnit = unit.trim() || "pièce";
+
+  const state = loadState();
+  const ingredientId = ensureIngredientId(trimmedName, state);
+  if (!ingredientId) throw new Error(`Impossible d'ajouter « ${trimmedName} »`);
+  saveState(state);
+
+  const db = getDb();
+  const userId = DEMO_USER_ID;
+
+  const existing = await db.shoppingListItems
+    .filter(
+      (item) =>
+        item.periodStart === periodStart &&
+        item.periodEnd === periodEnd &&
+        item.section === "extra" &&
+        item.ingredientId === ingredientId &&
+        item.unit === normalizedUnit
+    )
+    .first();
+
+  if (existing) {
+    await db.shoppingListItems.update(existing.id, {
+      quantity: existing.quantity + quantity,
+      updatedAt: now(),
+    });
+  } else {
+    await db.shoppingListItems.add({
+      id: crypto.randomUUID(),
+      userId,
+      ingredientId,
+      ingredientName: trimmedName,
+      periodStart,
+      periodEnd,
+      quantity,
+      unit: normalizedUnit,
+      isChecked: false,
+      section: "extra",
+      originSection: null,
+      updatedAt: now(),
+    });
+  }
+}
+
+/**
+ * Envoie le contenu actuel d'une section (« dishes » ou « extra ») vers
+ * la liste finale. Voir `exportSection` (generate.ts) pour la sémantique
+ * détaillée — même comportement en mode démo.
+ */
+export async function exportDemoSection(
+  periodStart: string,
+  periodEnd: string,
+  source: "dishes" | "extra"
+): Promise<{ count: number }> {
+  const db = getDb();
+  const userId = DEMO_USER_ID;
+
+  const sourceItems = await db.shoppingListItems
+    .filter(
+      (item) =>
+        item.periodStart === periodStart &&
+        item.periodEnd === periodEnd &&
+        item.section === source
+    )
+    .toArray();
+
+  if (sourceItems.length === 0) {
+    throw new Error(
+      source === "dishes"
+        ? "« Courses des plats » est vide : rien à exporter."
+        : "« Courses supplémentaires » est vide : rien à exporter."
+    );
+  }
+
+  const previousFinal = await db.shoppingListItems
+    .filter(
+      (item) =>
+        item.periodStart === periodStart &&
+        item.periodEnd === periodEnd &&
+        item.section === "final" &&
+        item.originSection === source
+    )
+    .toArray();
+
+  const checkedByKey = new Map(
+    previousFinal.map((item) => [`${item.ingredientId}-${item.unit}`, item.isChecked])
+  );
+
+  await db.shoppingListItems.bulkDelete(previousFinal.map((item) => item.id));
+
+  const rows: LocalShoppingListItem[] = sourceItems.map((item) => ({
+    id: crypto.randomUUID(),
+    userId,
+    ingredientId: item.ingredientId,
+    ingredientName: item.ingredientName,
+    periodStart,
+    periodEnd,
+    quantity: item.quantity,
+    unit: item.unit,
+    isChecked: checkedByKey.get(`${item.ingredientId}-${item.unit}`) ?? false,
+    section: "final",
+    originSection: source,
+    updatedAt: now(),
+  }));
 
   await db.shoppingListItems.bulkAdd(rows);
   return { count: rows.length };

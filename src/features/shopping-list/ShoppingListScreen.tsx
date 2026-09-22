@@ -5,6 +5,8 @@ import { useLiveQuery } from "dexie-react-hooks";
 import { getDb } from "@/lib/db/dexie";
 import { Button } from "@/components/ui/Button";
 import { Spinner } from "@/components/ui/Spinner";
+import { UNITS } from "@/lib/units";
+import { fetchIngredients } from "@/features/dishes/api";
 import { formatDateLong, formatQuantity, type DurationUnit } from "@/lib/date";
 import {
   useShoppingList,
@@ -13,6 +15,8 @@ import {
   removeItem,
 } from "./useShoppingList";
 import {
+  addExtraItem,
+  exportSection,
   generateShoppingList,
   getDefaultPeriod,
   periodFromDuration,
@@ -25,6 +29,34 @@ const UNIT_OPTIONS: { value: DurationUnit; label: string }[] = [
   { value: "week", label: "semaine(s)" },
   { value: "month", label: "mois" },
 ];
+
+/** Statut d'une action, rattaché à la zone de la page qui l'a déclenchée. */
+type ActionStatus = {
+  scope: "add" | "dishes" | "extra" | null;
+  message: string | null;
+  error: string | null;
+};
+
+const IDLE_STATUS: ActionStatus = { scope: null, message: null, error: null };
+
+function StatusBanner({ status, scope }: { status: ActionStatus; scope: ActionStatus["scope"] }) {
+  if (status.scope !== scope) return null;
+  if (status.error) {
+    return (
+      <p style={{ color: "var(--danger)", fontWeight: 650, margin: "0.6rem 0 0" }}>
+        {status.error}
+      </p>
+    );
+  }
+  if (status.message) {
+    return (
+      <p style={{ color: "var(--accent-dark)", fontWeight: 600, margin: "0.6rem 0 0" }}>
+        {status.message}
+      </p>
+    );
+  }
+  return null;
+}
 
 function ItemRow({
   item,
@@ -64,6 +96,32 @@ function ItemRow({
   );
 }
 
+/** Article d'une section d'origine (« Courses des plats »/« supplémentaires »), sans case à cocher : rien à acheter tant que ce n'est pas exporté vers la liste finale. */
+function StagingRow({
+  item,
+  onRemove,
+}: {
+  item: ShoppingListItem;
+  onRemove: (id: string) => void;
+}) {
+  return (
+    <div className="shop-item">
+      <span className="shop-name">{item.ingredientName}</span>
+      <span className="shop-qty">
+        {formatQuantity(item.quantity)} {item.unit}
+      </span>
+      <button
+        type="button"
+        className="btn btn-ghost btn-icon"
+        aria-label={`Retirer ${item.ingredientName}`}
+        onClick={() => onRemove(item.id)}
+      >
+        ✕
+      </button>
+    </div>
+  );
+}
+
 export function ShoppingListScreen() {
   const defaults = useMemo(() => getDefaultPeriod(), []);
   const [amount, setAmount] = useState(defaults.amount);
@@ -71,22 +129,27 @@ export function ShoppingListScreen() {
   const [periodStart, setPeriodStart] = useState(defaults.periodStart);
   const [periodEnd, setPeriodEnd] = useState(defaults.periodEnd);
 
-  const [generating, setGenerating] = useState(false);
-  const [message, setMessage] = useState<string | null>(null);
-  const [error, setError] = useState<string | null>(null);
+  const [busy, setBusy] = useState(false);
+  const [status, setStatus] = useState<ActionStatus>(IDLE_STATUS);
+
+  const [addName, setAddName] = useState("");
+  const [addQuantity, setAddQuantity] = useState(1);
+  const [addUnit, setAddUnit] = useState<string>(UNITS[0]);
+  const [ingredientSuggestions, setIngredientSuggestions] = useState<string[]>([]);
 
   const items = useShoppingList(periodStart, periodEnd);
   const pendingCount = useLiveQuery(() => getDb().pendingMutations.count(), []);
 
-  const toBuy = useMemo(
-    () => items?.filter((i) => !i.isChecked) ?? [],
-    [items]
-  );
-  const alreadyHave = useMemo(
-    () => items?.filter((i) => i.isChecked) ?? [],
-    [items]
-  );
-  const totalCount = items?.length ?? 0;
+  const dishesItems = useMemo(() => items?.filter((i) => i.section === "dishes") ?? [], [items]);
+  const extraItems = useMemo(() => items?.filter((i) => i.section === "extra") ?? [], [items]);
+  const finalItems = useMemo(() => items?.filter((i) => i.section === "final") ?? [], [items]);
+
+  const toBuy = useMemo(() => finalItems.filter((i) => !i.isChecked), [finalItems]);
+  const alreadyHave = useMemo(() => finalItems.filter((i) => i.isChecked), [finalItems]);
+
+  useEffect(() => {
+    void fetchIngredients().then(setIngredientSuggestions);
+  }, []);
 
   function applyDuration(nextAmount: number, nextUnit: DurationUnit) {
     const period = periodFromDuration(nextAmount, nextUnit);
@@ -97,29 +160,74 @@ export function ShoppingListScreen() {
   }
 
   useEffect(() => {
-    setMessage(null);
-    setError(null);
+    setStatus(IDLE_STATUS);
     void (async () => {
       await refreshShoppingList(periodStart, periodEnd);
       await flushPendingMutations();
     })();
   }, [periodStart, periodEnd]);
 
+  async function handleAddExtra(e: React.FormEvent) {
+    e.preventDefault();
+    const trimmed = addName.trim();
+    if (!trimmed) return;
+    setBusy(true);
+    setStatus({ scope: "add", message: null, error: null });
+    try {
+      await addExtraItem(periodStart, periodEnd, trimmed, addQuantity, addUnit);
+      setStatus({ scope: "add", message: `« ${trimmed} » ajouté aux courses supplémentaires.`, error: null });
+      setAddName("");
+      setAddQuantity(1);
+    } catch (err) {
+      setStatus({
+        scope: "add",
+        message: null,
+        error: err instanceof Error ? err.message : "Ajout impossible",
+      });
+    } finally {
+      setBusy(false);
+    }
+  }
+
   async function handleGenerate() {
-    setGenerating(true);
-    setError(null);
-    setMessage(null);
+    setBusy(true);
+    setStatus({ scope: "dishes", message: null, error: null });
     try {
       const { count } = await generateShoppingList(periodStart, periodEnd);
-      setMessage(
-        count > 0
-          ? `Liste générée : ${count} article${count > 1 ? "s" : ""}.`
-          : "La liste est vide."
-      );
+      setStatus({
+        scope: "dishes",
+        message: count > 0 ? `Liste générée : ${count} article${count > 1 ? "s" : ""}.` : "La liste est vide.",
+        error: null,
+      });
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Génération impossible");
+      setStatus({
+        scope: "dishes",
+        message: null,
+        error: err instanceof Error ? err.message : "Génération impossible",
+      });
     } finally {
-      setGenerating(false);
+      setBusy(false);
+    }
+  }
+
+  async function handleExport(section: "dishes" | "extra") {
+    setBusy(true);
+    setStatus({ scope: section, message: null, error: null });
+    try {
+      const { count } = await exportSection(periodStart, periodEnd, section);
+      setStatus({
+        scope: section,
+        message: `${count} article${count > 1 ? "s" : ""} envoyé${count > 1 ? "s" : ""} vers la liste finale.`,
+        error: null,
+      });
+    } catch (err) {
+      setStatus({
+        scope: section,
+        message: null,
+        error: err instanceof Error ? err.message : "Export impossible",
+      });
+    } finally {
+      setBusy(false);
     }
   }
 
@@ -141,6 +249,65 @@ export function ShoppingListScreen() {
             Du {formatDateLong(periodStart)} au {formatDateLong(periodEnd)}
           </p>
         </div>
+      </div>
+
+      <div className="card">
+        <p className="section-title" style={{ marginBottom: "0.55rem" }}>
+          Ajouter un article
+        </p>
+        <form
+          className="row"
+          style={{ alignItems: "flex-end", flexWrap: "wrap" }}
+          onSubmit={(e) => void handleAddExtra(e)}
+        >
+          <div className="field" style={{ marginBottom: 0, flex: 1, minWidth: "9rem" }}>
+            <label htmlFor="extra-name">Article</label>
+            <input
+              id="extra-name"
+              list="shopping-ingredient-names"
+              className="input"
+              placeholder="Ex : Sacs poubelle"
+              value={addName}
+              onChange={(e) => setAddName(e.target.value)}
+            />
+          </div>
+          <div className="field" style={{ marginBottom: 0, width: "5rem" }}>
+            <label htmlFor="extra-quantity">Qté</label>
+            <input
+              id="extra-quantity"
+              type="number"
+              className="input"
+              min="0"
+              step="any"
+              value={Number.isNaN(addQuantity) ? "" : String(addQuantity)}
+              onChange={(e) => setAddQuantity(e.target.value === "" ? 0 : Number(e.target.value))}
+            />
+          </div>
+          <div className="field" style={{ marginBottom: 0, width: "8rem" }}>
+            <label htmlFor="extra-unit">Unité</label>
+            <select
+              id="extra-unit"
+              className="select"
+              value={addUnit}
+              onChange={(e) => setAddUnit(e.target.value)}
+            >
+              {UNITS.map((u) => (
+                <option key={u} value={u}>
+                  {u}
+                </option>
+              ))}
+            </select>
+          </div>
+          <Button type="submit" disabled={busy || !addName.trim()}>
+            + Ajouter
+          </Button>
+        </form>
+        <datalist id="shopping-ingredient-names">
+          {ingredientSuggestions.map((suggestion) => (
+            <option key={suggestion} value={suggestion} />
+          ))}
+        </datalist>
+        <StatusBanner status={status} scope="add" />
       </div>
 
       <div className="card">
@@ -178,23 +345,10 @@ export function ShoppingListScreen() {
               ))}
             </select>
           </div>
-          <Button
-            onClick={() => void handleGenerate()}
-            disabled={generating || !periodStart || !periodEnd}
-          >
-            {generating ? "Génération…" : "Générer la liste"}
-          </Button>
         </div>
-        {error ? (
-          <p style={{ color: "var(--danger)", fontWeight: 650, margin: "0.7rem 0 0" }}>
-            {error}
-          </p>
-        ) : null}
-        {message ? (
-          <p style={{ color: "var(--accent-dark)", fontWeight: 600, margin: "0.7rem 0 0" }}>
-            {message}
-          </p>
-        ) : null}
+        <p style={{ margin: "0.6rem 0 0", color: "var(--muted)", fontSize: "0.85rem" }}>
+          Période appliquée aux trois sections ci-dessous.
+        </p>
       </div>
 
       {pendingCount && pendingCount > 0 ? (
@@ -206,50 +360,96 @@ export function ShoppingListScreen() {
 
       {items === undefined ? (
         <Spinner />
-      ) : totalCount === 0 ? (
-        <div className="card empty">
-          Aucun article sur cette période. Génère la liste pour la remplir.
-        </div>
       ) : (
-        <div className="stack">
-          <div className="stack" style={{ gap: "0.45rem" }}>
+        <div className="stack" style={{ gap: "1.1rem" }}>
+          <div className="card stack" style={{ gap: "0.55rem" }}>
             <div className="row-spread">
-              <p className="section-title">À acheter ({toBuy.length})</p>
-              {toBuy.length === 0 ? (
-                <span className="tag">Rien à acheter</span>
-              ) : null}
+              <p className="section-title">Courses des plats ({dishesItems.length})</p>
+              <div className="row" style={{ gap: "0.4rem" }}>
+                <Button size="sm" variant="ghost" disabled={busy} onClick={() => void handleGenerate()}>
+                  Générer depuis le planning
+                </Button>
+                <Button
+                  size="sm"
+                  disabled={busy || dishesItems.length === 0}
+                  onClick={() => void handleExport("dishes")}
+                >
+                  Exporter vers la liste finale
+                </Button>
+              </div>
             </div>
-            {toBuy.length === 0 ? (
+            {dishesItems.length === 0 ? (
               <p style={{ margin: 0, color: "var(--muted)" }}>
-                Tout est déjà marqué comme chez vous.
+                Rien pour l&apos;instant. Planifie des repas puis clique sur « Générer depuis le
+                planning ».
               </p>
             ) : (
-              toBuy.map((item) => (
-                <ItemRow
-                  key={item.id}
-                  item={item}
-                  onToggle={handleToggle}
-                  onRemove={handleRemove}
-                />
+              dishesItems.map((item) => (
+                <StagingRow key={item.id} item={item} onRemove={handleRemove} />
               ))
             )}
+            <StatusBanner status={status} scope="dishes" />
           </div>
 
-          {alreadyHave.length > 0 ? (
-            <div className="stack" style={{ gap: "0.45rem", marginTop: "0.5rem" }}>
-              <p className="section-title">
-                Déjà chez nous ({alreadyHave.length})
-              </p>
-              {alreadyHave.map((item) => (
-                <ItemRow
-                  key={item.id}
-                  item={item}
-                  onToggle={handleToggle}
-                  onRemove={handleRemove}
-                />
-              ))}
+          <div className="card stack" style={{ gap: "0.55rem" }}>
+            <div className="row-spread">
+              <p className="section-title">Courses supplémentaires ({extraItems.length})</p>
+              <Button
+                size="sm"
+                disabled={busy || extraItems.length === 0}
+                onClick={() => void handleExport("extra")}
+              >
+                Exporter vers la liste finale
+              </Button>
             </div>
-          ) : null}
+            {extraItems.length === 0 ? (
+              <p style={{ margin: 0, color: "var(--muted)" }}>
+                Rien pour l&apos;instant. Ajoute un article avec le formulaire en haut de page.
+              </p>
+            ) : (
+              extraItems.map((item) => (
+                <StagingRow key={item.id} item={item} onRemove={handleRemove} />
+              ))
+            )}
+            <StatusBanner status={status} scope="extra" />
+          </div>
+
+          <div className="card stack" style={{ gap: "0.55rem" }}>
+            <p className="section-title">Liste finale ({finalItems.length})</p>
+            {finalItems.length === 0 ? (
+              <p style={{ margin: 0, color: "var(--muted)" }}>
+                Vide pour l&apos;instant. Exporte « Courses des plats » et/ou « Courses
+                supplémentaires » pour la remplir.
+              </p>
+            ) : (
+              <div className="stack">
+                <div className="stack" style={{ gap: "0.45rem" }}>
+                  <div className="row-spread">
+                    <p className="section-title">À acheter ({toBuy.length})</p>
+                    {toBuy.length === 0 ? <span className="tag">Rien à acheter</span> : null}
+                  </div>
+                  {toBuy.length === 0 ? (
+                    <p style={{ margin: 0, color: "var(--muted)" }}>
+                      Tout est déjà marqué comme chez vous.
+                    </p>
+                  ) : (
+                    toBuy.map((item) => (
+                      <ItemRow key={item.id} item={item} onToggle={handleToggle} onRemove={handleRemove} />
+                    ))
+                  )}
+                </div>
+
+                {alreadyHave.length > 0 ? (
+                  <div className="stack" style={{ gap: "0.45rem", marginTop: "0.5rem" }}>
+                    <p className="section-title">Déjà chez nous ({alreadyHave.length})</p>
+                    {alreadyHave.map((item) => (
+                      <ItemRow key={item.id} item={item} onToggle={handleToggle} onRemove={handleRemove} />
+                    ))}
+                  </div>
+                ) : null}
+              </div>
+            )}
+          </div>
         </div>
       )}
     </div>

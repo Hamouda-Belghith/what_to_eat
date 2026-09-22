@@ -13,7 +13,7 @@ import {
 import { addDays, parseISODate, toISODate } from "@/lib/date";
 import type { MealSlot } from "@/lib/supabase/database.types";
 import { MEAL_SLOTS, type MealCycle } from "@/features/cycles/types";
-import type { PlannedMeal } from "./types";
+import type { PlannedMeal, SpecialMeal } from "./types";
 
 type Result<T> = { data: T[] | null; error: PostgrestError | null };
 type MutateResult = { error: PostgrestError | null };
@@ -24,6 +24,7 @@ interface PlannedMealRow {
   meal_slot: MealSlot;
   dish_id: string | null;
   meal_cycle_id: string | null;
+  special: string | null;
   dishes?: { name: string; calories: number | null; protein_g: number | null } | null;
 }
 
@@ -66,7 +67,9 @@ export async function fetchPlannedMeals(
 
   const { data, error } = (await supabase
     .from("planned_meals")
-    .select("id, date, meal_slot, dish_id, meal_cycle_id, dishes(name, calories, protein_g)")
+    .select(
+      "id, date, meal_slot, dish_id, meal_cycle_id, special, dishes(name, calories, protein_g)"
+    )
     .eq("user_id", userId)
     .gte("date", periodStart)
     .lte("date", periodEnd)) as Result<PlannedMealRow>;
@@ -76,20 +79,23 @@ export async function fetchPlannedMeals(
     return [];
   }
 
-  // dish_id null = case explicitement vidée (voir setMealWithScope) : ne
-  // représente pas un vrai repas, on la cache de tout le reste de l'app.
+  // dish_id et special tous deux null = case explicitement vidée (voir
+  // setMealWithScope) : ne représente pas un vrai repas, on la cache de
+  // tout le reste de l'app. Un repas spécial (dish_id null, special
+  // renseigné) reste affiché.
   return data
-    .filter((row): row is PlannedMealRow & { dish_id: string } => row.dish_id !== null)
+    .filter((row) => row.dish_id !== null || row.special !== null)
     .map((row) => ({
       id: row.id,
       date: row.date,
       mealSlot: row.meal_slot,
       dishId: row.dish_id,
-      dishName: row.dishes?.name ?? "",
+      dishName: row.dishes?.name ?? null,
       dishCalories: row.dishes?.calories ?? null,
       // numeric(6,1) : PostgREST peut le renvoyer sous forme de chaîne.
       dishProteinG:
         row.dishes?.protein_g == null ? null : Number(row.dishes.protein_g),
+      special: row.special as SpecialMeal | null,
       mealCycleId: row.meal_cycle_id,
     }));
 }
@@ -143,10 +149,11 @@ export async function setPlannedMeal(
   date: string,
   mealSlot: MealSlot,
   dishId: string | null,
-  mealCycleId: string | null = null
+  mealCycleId: string | null = null,
+  special: SpecialMeal | null = null
 ): Promise<void> {
   if (isDemoMode()) {
-    await setDemoPlannedMeal(date, mealSlot, dishId, mealCycleId);
+    await setDemoPlannedMeal(date, mealSlot, dishId, mealCycleId, special);
     return;
   }
 
@@ -163,6 +170,7 @@ export async function setPlannedMeal(
       meal_slot: mealSlot,
       dish_id: dishId,
       meal_cycle_id: mealCycleId,
+      special,
     } as never,
     { onConflict: "user_id, date, meal_slot" } as never
   )) as MutateResult;

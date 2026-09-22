@@ -6,6 +6,80 @@ haut du fichier (ordre antéchronologique).
 
 ---
 
+## 2026-09-22 — Repas spécial « Manger dehors » et liste de courses en trois sections
+
+**Contexte** : demande de pouvoir choisir, sur une case du Planning,
+quelque chose qui n'est pas un plat (« Manger dehors » donné comme
+exemple) ; et de restructurer la liste de courses en trois parties —
+« Courses des plats » (générée), « Courses supplémentaires » (ajout
+manuel), « liste finale » — avec un bouton « Exporter » sur chacune des
+deux premières vers la liste finale.
+
+**Décisions — repas spécial** :
+- **Nouvelle colonne `planned_meals.special`** (texte, liste fermée
+  contrainte en base à `eating_out` pour l'instant), plutôt qu'un faux
+  plat dans `dishes` (aurait pollué la liste des plats et la liste de
+  courses) ou qu'une table séparée (complexité inutile pour une seule
+  valeur). Mutuellement exclusif avec `dish_id` par contrainte.
+- **Ne participe jamais au motif de répétition.** `meal_cycle_entries.dish_id`
+  reste `not null` : étendre le motif pour représenter un repas spécial
+  aurait touché toute la logique de propagation (`setMealWithScope`,
+  `applyCycleToRange`, `findRepeatConflicts`) pour un besoin non
+  demandé. Choisir « Manger dehors » applique donc toujours un override
+  « cette semaine seulement », sans poser la question de portée même si
+  un motif est actif — comportement à confirmer avec l'utilisateur si
+  ce n'est pas ce qu'il attendait.
+- **Liste fermée** (une seule valeur) plutôt qu'un champ libre : plus
+  simple à afficher/traiter uniformément ; ajouter une option future
+  = une nouvelle migration qui étend la contrainte.
+
+**Décisions — liste de courses en trois sections** :
+- **Une colonne `section` sur `shopping_list_items`** (`dishes` | `extra`
+  | `final`) plutôt que trois tables séparées : mêmes colonnes, mêmes
+  écrans de lecture (Dexie, offline), seule la portée des requêtes
+  change.
+- **« Exporter » remplace, ne fusionne pas.** Une section exportée
+  écrase dans la liste finale les lignes qu'elle y avait précédemment
+  déposées (repérées par `origin_section`), pas celles de l'autre
+  section. Ce choix rend un nouvel export idempotent après régénération
+  du planning ou ajout d'un article supplémentaire (pas de doublons à
+  chaque clic), au prix d'une limite acceptée : si le même ingrédient
+  existe dans les deux sections, la liste finale garde deux lignes
+  distinctes plutôt que de les fusionner. L'état coché d'un article
+  encore présent (même ingrédient + unité) après un nouvel export est
+  conservé, pour ne pas perdre « déjà chez nous » à chaque
+  régénération.
+- **Exporter une section vide est refusé** (message d'erreur) plutôt
+  que d'effacer silencieusement les lignes déjà exportées de cette
+  section dans la liste finale — évite une perte de données surprenante
+  si on clique par erreur avant d'avoir rempli la section.
+- **Le formulaire d'ajout est en haut de la page** (au-dessus du
+  sélecteur de période), comme demandé explicitement, même si les
+  articles ajoutés atterrissent dans la section « Courses
+  supplémentaires » plus bas sur la page.
+- **La case à cocher et « déjà chez nous » n'existent que dans la liste
+  finale.** Les deux sections d'origine ne sont que des listes de
+  préparation (retrait possible pour corriger une erreur, pas de
+  cochage) — cocher un article n'a de sens qu'une fois dans la liste
+  qu'on emmène faire les courses.
+- **Génère/ajoute/exporte restent des actions en ligne**, comme
+  l'était déjà « Générer la liste » : cohérent avec la contrainte
+  produit « offline limité à la liste de courses [cochable] », pas une
+  extension de son périmètre.
+- **Corrigé au passage** : l'ancien index unique
+  (`user_id, ingredient_id, period_start, period_end`) ne tenait compte
+  ni de l'unité ni de la section — la nouvelle section l'aurait de
+  toute façon fait exploser à l'insertion, et il empêchait déjà en
+  théorie un même ingrédient dans deux unités différentes sur la même
+  période. Remplacé (migration 0009) par un index incluant aussi `unit`
+  et `section`.
+
+**Migrations** : `0008_planned_meal_special.sql`,
+`0009_shopping_list_sections.sql` (à appliquer sur la base de
+production).
+
+---
+
 ## 2026-09-20 — Collation, apports nutritionnels et affichage personnalisable du Planning
 
 **Contexte** : demande de retirer la photo et le mot « Modèle » des cases

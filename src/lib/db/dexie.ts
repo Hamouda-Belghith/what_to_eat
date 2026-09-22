@@ -1,4 +1,5 @@
 import Dexie, { type EntityTable } from "dexie";
+import type { ShoppingSection } from "@/features/shopping-list/types";
 
 // Miroir local (offline) de shopping_list_items, voir supabase/migrations.
 export interface LocalShoppingListItem {
@@ -11,6 +12,8 @@ export interface LocalShoppingListItem {
   quantity: number;
   unit: string;
   isChecked: boolean;
+  section: ShoppingSection;
+  originSection: "dishes" | "extra" | null;
   updatedAt: string;
 }
 

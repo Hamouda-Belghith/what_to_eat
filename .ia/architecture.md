@@ -70,8 +70,8 @@ Tables principales :
 | `dish_ingredients`     | Composition d'un plat (ingrédient + quantité + unité)              |
 | `meal_cycles`          | Motif unique de répétition (fréquence libre, en semaines), piloté depuis le Planning |
 | `meal_cycle_entries`   | Créneaux du motif (jour relatif + repas + plat)                        |
-| `planned_meals`        | Planning calendaire réel (override possible sans casser le motif)      |
-| `shopping_list_items`  | Liste de courses agrégée et persistée, cochable, source de l'offline |
+| `planned_meals`        | Planning calendaire réel (override possible sans casser le motif ; `special`, voir plus bas) |
+| `shopping_list_items`  | Liste de courses (3 sections via `section`, voir plus bas), cochable, source de l'offline |
 
 Point clé : un seul motif de répétition par utilisateur
 (`meal_cycles`/`meal_cycle_entries`), avec une fréquence libre en
@@ -118,6 +118,41 @@ démo local, la photo est encodée en base64 directement dans
 `localStorage` (pas de vrai stockage de fichiers disponible hors
 Supabase). Affichée uniquement sur la fiche plat (écran Plats).
 
+**Repas spécial (`planned_meals.special`)** : une case du Planning peut
+porter autre chose qu'un plat — pour l'instant une seule valeur,
+`eating_out` (« Manger dehors »), liste fermée contrainte en base (voir
+`0008_planned_meal_special.sql`). Mutuellement exclusif avec `dish_id`
+(contrainte `dish_id is null or special is null` ; une case vidée a les
+deux à `null`, un repas spécial a `dish_id` null et `special` renseigné
+— `fetchPlannedMeals`/`fetchDemoPlannedMeals` filtrent la première,
+affichent la seconde). N'a pas d'ingrédients (jamais compté par
+`generateShoppingList`) ni de calories/protéines (`sumNutrition` le
+traite comme une valeur non renseignée). Ne peut pas intégrer le motif
+de répétition (`meal_cycle_entries.dish_id` reste `not null`) :
+`setMealWithScope` applique toujours l'override « cette semaine
+seulement » quand `special` est fourni, sans poser la question de
+portée même si un motif est actif.
+
+**Liste de courses en trois sections (`shopping_list_items.section`)** :
+`dishes` (générée depuis le planning, comportement historique),
+`extra` (ajoutée à la main via le formulaire en haut de `/courses`) et
+`final` (cochable, remplie par les boutons « Exporter vers la liste
+finale » des deux premières). `origin_section` (uniquement sur les
+lignes `final`) retient de quelle section chaque ligne a été exportée :
+exporter une section supprime puis réinsère uniquement les lignes
+`final` qu'elle avait produites (pas celles de l'autre section), en
+conservant l'état coché (`is_checked`) d'un article qui reste présent
+(même ingrédient + unité) d'un export à l'autre — un nouvel export
+après régénération/ajout resynchronise donc sans dupliquer. Limite
+connue : si les deux sections contiennent le même ingrédient, la liste
+finale affiche deux lignes séparées (pas de fusion entre sections). Un
+article `extra` ajouté deux fois (même ingrédient + unité + période)
+fusionne ses quantités au lieu de dupliquer. Voir
+`0009_shopping_list_sections.sql`, qui remplace aussi l'ancien index
+unique (`user_id, ingredient_id, period_start, period_end`, qui ne
+tenait compte ni de l'unité ni de la section) par un index incluant
+`unit` et `section`.
+
 **Créneaux de repas** : l'enum Postgres `meal_slot_type` vaut
 `breakfast | lunch | snack | dinner` (migration 0006 ajoute `snack`).
 La liste ordonnée côté code est `MEAL_SLOTS` dans
@@ -135,6 +170,11 @@ stockées en `localStorage` par appareil (clés `planning-show-*`), pas en
 base — ce sont des préférences d'affichage, pas des données partagées.
 
 ## Stratégie offline (liste de courses uniquement)
+
+Concerne uniquement le cochage/retrait d'un article déjà présent. Les
+autres actions (générer depuis le planning, ajouter un article
+supplémentaire, exporter une section vers la liste finale) nécessitent
+une connexion réseau, comme le reste de l'app.
 
 1. Lecture : `shopping_list_items` est répliqué dans Dexie
    (`src/lib/db/dexie.ts`), qui sert de source de vérité pour l'UI —

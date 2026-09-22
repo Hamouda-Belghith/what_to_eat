@@ -1,8 +1,30 @@
 # État actuel du projet (résumé rapide)
 
-Date: 2026-09-20
+Date: 2026-09-22
 
 Résumé:
+- **Repas spécial « Manger dehors » + liste de courses en 3 sections**
+  (2026-09-22) : sur une case du Planning, on peut choisir « Manger
+  dehors » à la place d'un plat (pas d'ingrédients, jamais compté dans
+  la liste de courses ; les calories/protéines du jour le traitent
+  comme incomplet, comme un plat sans valeur renseignée). Ne participe
+  jamais au motif de répétition — le choisir applique toujours « cette
+  semaine seulement », sans poser la question de portée. Voir
+  `supabase/migrations/0008_planned_meal_special.sql` et
+  `.ia/decisions.md`.
+  La liste de courses (`/courses`) a trois sections : **Courses des
+  plats** (générée depuis le planning, inchangé), **Courses
+  supplémentaires** (ajout manuel via un formulaire tout en haut de la
+  page) et **Liste finale** (cochable, remplie par un bouton
+  « Exporter vers la liste finale » sur chacune des deux premières
+  sections). Exporter une section remplace ses propres articles dans la
+  liste finale (pas ceux de l'autre section) en conservant l'état coché
+  des articles inchangés — un nouvel export après régénération/ajout
+  resynchronise donc sans dupliquer. Voir
+  `supabase/migrations/0009_shopping_list_sections.sql` et
+  `.ia/decisions.md`. **Migrations à appliquer sur la base de
+  production** : `0008_planned_meal_special.sql` et
+  `0009_shopping_list_sections.sql`.
 - **Erreurs d'enregistrement d'un plat, messages clairs** (2026-09-20) :
   `saveDish` (`src/features/dishes/api.ts`) ne renvoie plus `null` en
   silence : il lève une erreur au message lisible (pas de connexion,

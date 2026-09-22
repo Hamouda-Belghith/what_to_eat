@@ -107,6 +107,7 @@ export interface Database {
           meal_slot: MealSlot;
           dish_id: string | null;
           meal_cycle_id: string | null;
+          special: string | null;
           created_at: string;
         };
         Insert: {
@@ -115,6 +116,7 @@ export interface Database {
           meal_slot: MealSlot;
           dish_id?: string | null;
           meal_cycle_id?: string | null;
+          special?: string | null;
           created_at?: string;
         };
         Update: Partial<
@@ -130,6 +132,8 @@ export interface Database {
           quantity: number;
           unit: string;
           is_checked: boolean;
+          section: string;
+          origin_section: string | null;
           updated_at: string;
         };
         Insert: {
@@ -140,6 +144,8 @@ export interface Database {
           quantity: number;
           unit: string;
           is_checked?: boolean;
+          section?: string;
+          origin_section?: string | null;
           updated_at?: string;
         };
         Update: Partial<
