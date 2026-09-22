@@ -89,6 +89,44 @@ Agir comme un développeur senior full-stack et architecte logiciel.
   croit déjà exécuté) désynchronise le schéma réel de l'historique du
   dépôt, sans que rien ne le signale.
 
+## Déploiement et application des migrations (workflow automatisé)
+
+Demandé explicitement par l'utilisateur le 2026-09-22 : reproduire ce
+qu'il faisait à la main (un fichier par migration dans le SQL Editor de
+Supabase, exécuté à chaque push) sans qu'il ait à le refaire lui-même.
+
+- **Push sans demander confirmation.** Ce dépôt n'utilise ni branches
+  ni PR : tout part directement sur `main` (Vercel redéploie
+  automatiquement sur push, voir `.github/workflows/deploy-vercel.yml`).
+  Une fois une tâche terminée et `.ia/` mis à jour, committer et
+  `git push origin main` sans demander confirmation supplémentaire —
+  l'autorisation est ici, permanente.
+- **Appliquer directement sur la base de production tout fichier
+  `supabase/migrations/NNNN_xxx.sql` ajouté dans la tâche**, dans la
+  foulée du push, sans demander confirmation ni attendre que
+  l'utilisateur le fasse lui-même dans le SQL Editor. Utiliser une
+  connexion Postgres directe (voir ci-dessous), jamais de saisie
+  manuelle demandée à l'utilisateur pour ce cas précis.
+- **Ne jamais réappliquer une migration déjà exécutée** (cohérent avec
+  la section « Migrations SQL » ci-dessus). Si l'exécution échoue à
+  mi-chemin, signaler précisément où plutôt que de relancer tout le
+  fichier ou d'improviser une correction.
+- **Si la base n'est pas joignable** depuis l'environnement de
+  l'assistant au moment de l'exécution, le dire clairement, laisser la
+  ou les migrations non appliquées, et donner le SQL exact à coller
+  dans le SQL Editor en secours pour ce cas précis — ne pas improviser
+  une autre méthode risquée.
+
+**Connexion à utiliser** : `SUPABASE_DB_URI` dans `.env` est une
+connexion Postgres **directe** dont l'hôte (`db.<ref>.supabase.co`) n'a
+pas d'adresse IPv4 — injoignable depuis un environnement sans sortie
+IPv6 (cas rencontré le 2026-09-22). Pour que l'application automatique
+fonctionne dans ce cas, il faut la chaîne du **connection pooler**
+Supabase (Supavisor, compatible IPv4) : Project Settings → Database →
+Connection pooling (mode Session ou Transaction), à ajouter dans `.env`
+sous `SUPABASE_DB_POOLER_URI` — jamais commité (voir `.gitignore`).
+Utiliser cette variable en priorité si elle existe.
+
 ## Contraintes produit à respecter (ne pas remettre en cause sans le signaler)
 
 - **Usage privé, 2 utilisateurs** (un couple). Pas de gestion multi-
