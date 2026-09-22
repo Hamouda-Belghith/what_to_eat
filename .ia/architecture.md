@@ -136,27 +136,36 @@ portée même si un motif est actif.
 **Liste de courses en trois sections (`shopping_list_items.section`)**,
 présentées comme deux onglets + une liste toujours visible sur l'écran
 `/courses` :
-- `dishes` (onglet « Cette semaine ») : générée depuis le planning sur
-  une période choisie (`period_start`/`period_end` non null pour cette
-  section seulement) — comportement historique, inchangé.
+- `dishes` (onglet « Depuis le planning ») : générée depuis le planning
+  sur une période choisie (`period_start`/`period_end` non null pour
+  cette section seulement) — comportement historique, inchangé.
 - `extra` (onglet « Courses supplémentaires ») : ajoutée à la main
   (recherche/autocomplétion sur les ingrédients déjà connus, sinon
   création à la volée — réutilise le référentiel `ingredients`, comme
   les ingrédients de plat). Liste **continue** : `period_start`/
   `period_end` valent `null`, pas de notion de durée.
 - `final` (section « À acheter », toujours visible sous les deux
-  onglets) : cochable, remplie par le bouton « Exporter vers « À
-  acheter » » de chacune des deux premières sections, vidée
-  manuellement (bouton « Vider », supprime toutes les lignes `final` de
+  onglets) : cochable, remplie par le bouton « Ajouter à la liste
+  d'achat » de chacune des deux premières sections, vidée manuellement
+  (bouton « Vider », supprime toutes les lignes `final` de
   l'utilisateur). Liste continue elle aussi (`period_start`/
   `period_end` null).
+
+Le rendu de « À acheter » est extrait dans
+`src/features/shopping-list/FinalListSection.tsx` (composant autonome :
+charge ses propres données via `useShoppingList`), réutilisé à deux
+endroits : en bas de `/courses` (`ShoppingListScreen.tsx`) et sur son
+propre onglet de navigation `/a-acheter`
+(`FinalListScreen.tsx`, ajouté dans `src/app/nav.tsx`), pour y accéder
+directement sans passer par les onglets de génération.
 
 **Export = fusion, pas remplacement.** `exportSection` (`generate.ts`)
 additionne la quantité de chaque article de la section source à la
 ligne `final` correspondante (même `ingredient_id` + `unit`), ou crée
 la ligne si absente — jamais de suppression automatique. Exporter
 plusieurs fois après avoir régénéré/ajouté des articles accumule donc
-sans perdre ce qui était déjà dans « À acheter » ; réexporter le MÊME
+sans perdre ce qui était déjà dans « À acheter » (bouton « Ajouter à la
+liste d'achat ») ; réexporter le MÊME
 contenu sans rien changer entre deux clics additionne deux fois (pas de
 détection d'export identique) — le bouton « Vider » est la seule façon
 de remettre la liste à zéro. Limite connue : si le même ingrédient

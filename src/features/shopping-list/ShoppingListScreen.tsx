@@ -1,28 +1,21 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
-import { useLiveQuery } from "dexie-react-hooks";
-import { getDb } from "@/lib/db/dexie";
 import { Button } from "@/components/ui/Button";
 import { Spinner } from "@/components/ui/Spinner";
 import { UNITS } from "@/lib/units";
 import { fetchIngredients } from "@/features/dishes/api";
 import { formatDateLong, formatQuantity, type DurationUnit } from "@/lib/date";
-import {
-  useShoppingList,
-  toggleItemChecked,
-  refreshShoppingList,
-  removeItem,
-} from "./useShoppingList";
+import { useShoppingList, refreshShoppingList, removeItem } from "./useShoppingList";
 import {
   addExtraItem,
-  clearFinalList,
   exportSection,
   generateShoppingList,
   getDefaultPeriod,
   periodFromDuration,
 } from "./generate";
 import { flushPendingMutations } from "./syncQueue";
+import { FinalListSection } from "./FinalListSection";
 import type { ShoppingListItem } from "./types";
 
 const UNIT_OPTIONS: { value: DurationUnit; label: string }[] = [
@@ -59,44 +52,6 @@ function StatusBanner({ status, scope }: { status: ActionStatus; scope: ActionSt
     );
   }
   return null;
-}
-
-function ItemRow({
-  item,
-  onToggle,
-  onRemove,
-}: {
-  item: ShoppingListItem;
-  onToggle: (id: string, checked: boolean) => void;
-  onRemove: (id: string) => void;
-}) {
-  return (
-    <div className={`shop-item ${item.isChecked ? "checked" : ""}`}>
-      <input
-        type="checkbox"
-        className="shop-checkbox"
-        checked={item.isChecked}
-        onChange={(e) => onToggle(item.id, e.target.checked)}
-        aria-label={
-          item.isChecked
-            ? `${item.ingredientName} — déjà chez nous`
-            : `${item.ingredientName} — à acheter`
-        }
-      />
-      <span className="shop-name">{item.ingredientName}</span>
-      <span className="shop-qty">
-        {formatQuantity(item.quantity)} {item.unit}
-      </span>
-      <button
-        type="button"
-        className="btn btn-ghost btn-icon"
-        aria-label={`Retirer ${item.ingredientName}`}
-        onClick={() => onRemove(item.id)}
-      >
-        ✕
-      </button>
-    </div>
-  );
 }
 
 /** Article d'une section d'origine, sans case à cocher : rien à acheter tant que ce n'est pas exporté vers « À acheter ». */
@@ -208,7 +163,6 @@ export function ShoppingListScreen() {
   const [ingredientSuggestions, setIngredientSuggestions] = useState<string[]>([]);
 
   const items = useShoppingList();
-  const pendingCount = useLiveQuery(() => getDb().pendingMutations.count(), []);
 
   const dishesItems = useMemo(
     () =>
@@ -218,10 +172,6 @@ export function ShoppingListScreen() {
     [items, periodStart, periodEnd]
   );
   const extraItems = useMemo(() => items?.filter((i) => i.section === "extra") ?? [], [items]);
-  const finalItems = useMemo(() => items?.filter((i) => i.section === "final") ?? [], [items]);
-
-  const toBuy = useMemo(() => finalItems.filter((i) => !i.isChecked), [finalItems]);
-  const alreadyHave = useMemo(() => finalItems.filter((i) => i.isChecked), [finalItems]);
 
   useEffect(() => {
     void fetchIngredients().then(setIngredientSuggestions);
@@ -296,7 +246,7 @@ export function ShoppingListScreen() {
       );
       setStatus({
         scope: section,
-        message: `${count} article${count > 1 ? "s" : ""} envoyé${count > 1 ? "s" : ""} vers « À acheter ».`,
+        message: `${count} article${count > 1 ? "s" : ""} ajouté${count > 1 ? "s" : ""} à la liste d'achat.`,
         error: null,
       });
     } catch (err) {
@@ -308,28 +258,6 @@ export function ShoppingListScreen() {
     } finally {
       setBusy(false);
     }
-  }
-
-  async function handleClearFinal() {
-    if (!window.confirm("Vider entièrement la liste « À acheter » ?")) return;
-    setBusy(true);
-    setStatus({ scope: "final", message: null, error: null });
-    try {
-      await clearFinalList();
-      setStatus({ scope: "final", message: "Liste vidée.", error: null });
-    } catch (err) {
-      setStatus({
-        scope: "final",
-        message: null,
-        error: err instanceof Error ? err.message : "Impossible de vider la liste",
-      });
-    } finally {
-      setBusy(false);
-    }
-  }
-
-  async function handleToggle(itemId: string, isChecked: boolean) {
-    await toggleItemChecked(itemId, isChecked);
   }
 
   async function handleRemove(itemId: string) {
@@ -351,7 +279,7 @@ export function ShoppingListScreen() {
           className={`subtab ${activeTab === "week" ? "active" : ""}`}
           onClick={() => setActiveTab("week")}
         >
-          Cette semaine
+          Depuis le planning
         </button>
         <button
           type="button"
@@ -418,7 +346,7 @@ export function ShoppingListScreen() {
                   disabled={busy || dishesItems.length === 0}
                   onClick={() => void handleExport("dishes")}
                 >
-                  Exporter vers « À acheter »
+                  Ajouter à la liste d'achat
                 </Button>
               </div>
               {dishesItems.length === 0 ? (
@@ -497,7 +425,7 @@ export function ShoppingListScreen() {
                   disabled={busy || extraItems.length === 0}
                   onClick={() => void handleExport("extra")}
                 >
-                  Exporter vers « À acheter »
+                  Ajouter à la liste d'achat
                 </Button>
               </div>
               {extraItems.length === 0 ? (
@@ -515,58 +443,7 @@ export function ShoppingListScreen() {
         </>
       )}
 
-      {pendingCount && pendingCount > 0 ? (
-        <p className="tag tag-warn" style={{ alignSelf: "flex-start" }}>
-          {pendingCount} modification{pendingCount > 1 ? "s" : ""} en attente de synchro
-        </p>
-      ) : null}
-
-      {items === undefined ? null : (
-        <div className="card stack" style={{ gap: "0.55rem" }}>
-          <div className="row-spread">
-            <h2 style={{ margin: 0, fontSize: "1.1rem" }}>À acheter</h2>
-            {finalItems.length > 0 ? (
-              <Button size="sm" variant="danger" disabled={busy} onClick={() => void handleClearFinal()}>
-                Vider
-              </Button>
-            ) : null}
-          </div>
-          <StatusBanner status={status} scope="final" />
-          {finalItems.length === 0 ? (
-            <p style={{ margin: 0, color: "var(--muted)" }}>
-              Vide pour l&apos;instant. Exporte « Cette semaine » et/ou « Courses supplémentaires »
-              pour la remplir.
-            </p>
-          ) : (
-            <div className="stack">
-              <div className="stack" style={{ gap: "0.45rem" }}>
-                <div className="row-spread">
-                  <p className="section-title">À acheter ({toBuy.length})</p>
-                  {toBuy.length === 0 ? <span className="tag">Rien à acheter</span> : null}
-                </div>
-                {toBuy.length === 0 ? (
-                  <p style={{ margin: 0, color: "var(--muted)" }}>
-                    Tout est déjà marqué comme chez vous.
-                  </p>
-                ) : (
-                  toBuy.map((item) => (
-                    <ItemRow key={item.id} item={item} onToggle={handleToggle} onRemove={handleRemove} />
-                  ))
-                )}
-              </div>
-
-              {alreadyHave.length > 0 ? (
-                <div className="stack" style={{ gap: "0.45rem", marginTop: "0.5rem" }}>
-                  <p className="section-title">Déjà chez nous ({alreadyHave.length})</p>
-                  {alreadyHave.map((item) => (
-                    <ItemRow key={item.id} item={item} onToggle={handleToggle} onRemove={handleRemove} />
-                  ))}
-                </div>
-              ) : null}
-            </div>
-          )}
-        </div>
-      )}
+      <FinalListSection />
     </div>
   );
 }

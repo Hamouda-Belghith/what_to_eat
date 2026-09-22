@@ -8,6 +8,7 @@ const LINKS = [
   { href: "/", label: "Planning" },
   { href: "/plats", label: "Plats" },
   { href: "/courses", label: "Courses" },
+  { href: "/a-acheter", label: "À acheter" },
 ];
 
 export function Nav() {
