@@ -3,15 +3,18 @@
 Date: 2026-09-22
 
 Résumé:
-- **Icône de l'application générée** (2026-09-22) : `public/icons/icon-192.png`
+- **Icône de l'application** (2026-09-22) : `public/icons/icon-192.png`
   et `icon-512.png` (référencées par `public/manifest.json`, icône
   d'écran d'accueil PWA) n'étaient que des placeholders cassés
-  (1×1 px). Régénérées depuis `public/icons/icon.svg` (design déjà
-  présent — assiette/couverts/cœur — recoloré avec les couleurs
-  actuelles du design system). Ajouté aussi `src/app/icon.png` (512×512)
-  et `src/app/apple-icon.png` (180×180) : convention de fichiers Next.js
-  App Router, favicon/icône Apple générés automatiquement, aucune
-  metadata à déclarer à la main. Pas de migration.
+  (1×1 px). D'abord régénérées depuis `public/icons/icon.svg` (ancien
+  design — assiette/couverts/cœur), puis **remplacées par une
+  illustration fournie par l'utilisateur** (calendrier de repas +
+  légumes + liste de courses, avec le nom de l'app). `icon.svg` n'est
+  plus utilisé (conservé pour référence). Ajouté aussi `src/app/icon.png`
+  (512×512) et `src/app/apple-icon.png` (180×180) : convention de
+  fichiers Next.js App Router, favicon/icône Apple générés
+  automatiquement, aucune metadata à déclarer à la main. Pas de
+  migration.
 - **Retouches liste de courses** (2026-09-22, suite à la réorg. ci-dessous) :
   l'onglet « Cette semaine » est renommé **« Depuis le planning »**
   (la durée est libre, pas forcément une semaine) ; les boutons
