@@ -838,6 +838,78 @@ button {
   margin: 0;
 }
 
+/* ---------- Sous-onglets (ex. Liste de courses) ---------- */
+
+.subtabs {
+  display: flex;
+  gap: 0.4rem;
+  border-bottom: 1px solid var(--line);
+  padding-bottom: 0.1rem;
+}
+
+.subtab {
+  border: none;
+  background: transparent;
+  border-radius: var(--radius-sm) var(--radius-sm) 0 0;
+  padding: 0.55rem 1rem;
+  font-weight: 650;
+  font-size: 0.92rem;
+  color: var(--muted);
+  border-bottom: 2px solid transparent;
+  margin-bottom: -1px;
+  transition: color 0.12s ease, border-color 0.12s ease;
+}
+
+.subtab:hover {
+  color: var(--ink);
+}
+
+.subtab.active {
+  color: var(--accent-dark);
+  border-bottom-color: var(--accent);
+}
+
+/* ---------- Champ avec suggestions (recherche d'ingrédient) ---------- */
+
+.autocomplete {
+  position: relative;
+}
+
+.autocomplete-list {
+  position: absolute;
+  top: calc(100% + 0.25rem);
+  left: 0;
+  right: 0;
+  z-index: 10;
+  background: var(--card);
+  border: var(--border);
+  border-radius: var(--radius-sm);
+  box-shadow: var(--shadow);
+  max-height: 12rem;
+  overflow-y: auto;
+  list-style: none;
+  margin: 0;
+  padding: 0.25rem;
+}
+
+.autocomplete-list li + li {
+  margin-top: 0.1rem;
+}
+
+.autocomplete-list button {
+  display: block;
+  width: 100%;
+  text-align: left;
+  padding: 0.45rem 0.6rem;
+  border-radius: 6px;
+  font-weight: 550;
+  font-size: 0.92rem;
+}
+
+.autocomplete-list button:hover {
+  background: var(--accent-soft);
+}
+
 /* ---------- Modale ---------- */
 
 .modal-overlay {

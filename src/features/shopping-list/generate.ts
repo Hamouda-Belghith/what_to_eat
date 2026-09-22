@@ -13,6 +13,7 @@ import {
 } from "./useShoppingList";
 import {
   addDemoExtraItem,
+  clearDemoFinalList,
   exportDemoSection,
   generateDemoShoppingList,
   isDemoMode,
@@ -189,13 +190,13 @@ async function upsertShoppingIngredient(
 }
 
 /**
- * Ajoute un article à la section « extra » (courses hors plats). Fusionne
- * avec un article existant de même ingrédient + unité sur la période
- * (quantités additionnées) plutôt que de dupliquer une ligne.
+ * Ajoute un article à la section « extra » (courses supplémentaires,
+ * liste continue — pas de période). Réutilise l'ingrédient référentiel
+ * existant s'il porte déjà ce nom (voir `fetchIngredients`), sinon en
+ * crée un nouveau. Fusionne avec un article déjà présent (même
+ * ingrédient + unité) plutôt que de dupliquer une ligne.
  */
 export async function addExtraItem(
-  periodStart: string,
-  periodEnd: string,
   name: string,
   quantity: number,
   unit: string
@@ -208,7 +209,7 @@ export async function addExtraItem(
   const normalizedUnit = unit.trim() || "pièce";
 
   if (isDemoMode()) {
-    await addDemoExtraItem(periodStart, periodEnd, trimmedName, quantity, normalizedUnit);
+    await addDemoExtraItem(trimmedName, quantity, normalizedUnit);
     return;
   }
 
@@ -224,8 +225,7 @@ export async function addExtraItem(
     .from("shopping_list_items")
     .select("id, quantity")
     .eq("user_id", userId)
-    .eq("period_start", periodStart)
-    .eq("period_end", periodEnd)
+    .is("period_start", null)
     .eq("section", "extra")
     .eq("ingredient_id", ingredientId)
     .eq("unit", normalizedUnit)
@@ -252,8 +252,6 @@ export async function addExtraItem(
     const { error } = (await supabase.from("shopping_list_items").insert({
       user_id: userId,
       ingredient_id: ingredientId,
-      period_start: periodStart,
-      period_end: periodEnd,
       quantity,
       unit: normalizedUnit,
       section: "extra",
@@ -264,25 +262,26 @@ export async function addExtraItem(
     }
   }
 
-  await refreshShoppingList(periodStart, periodEnd);
+  await refreshShoppingList();
 }
 
 /**
- * Envoie le contenu actuel d'une section (« dishes » ou « extra ») vers
- * la liste finale. Remplace uniquement les articles de la liste finale
- * précédemment exportés depuis CETTE section (ceux de l'autre section
- * restent intacts) — un nouvel export après régénération/ajout resynchronise
- * donc la liste finale sans dupliquer. L'état coché est conservé pour un
- * article qui reste présent (même ingrédient + unité) d'un export à l'autre.
+ * Envoie le contenu actuel d'une section (« dishes » sur `periodStart`/
+ * `periodEnd`, ou « extra ») vers la liste « À acheter ». Fusionne avec
+ * un article déjà présent (même ingrédient + unité) en additionnant les
+ * quantités, plutôt que de dupliquer une ligne — on peut donc exporter
+ * plusieurs fois de suite (après avoir régénéré ou ajouté des articles)
+ * sans perdre ce qui y était déjà. Un export répété du MÊME contenu
+ * (sans rien changer entre les deux clics) additionne deux fois : la
+ * liste « À acheter » se vide avec le bouton « Vider », pas en
+ * réexportant.
  */
 export async function exportSection(
-  periodStart: string,
-  periodEnd: string,
-  source: "dishes" | "extra"
+  source: "dishes" | "extra",
+  period?: { periodStart: string; periodEnd: string }
 ): Promise<{ count: number }> {
   if (isDemoMode()) {
-    const result = await exportDemoSection(periodStart, periodEnd, source);
-    return result;
+    return exportDemoSection(source, period);
   }
 
   const supabase = getSupabase();
@@ -291,13 +290,16 @@ export async function exportSection(
   const userId = await getCurrentUserId();
   if (!userId) throw new Error("Utilisateur non connecté");
 
-  const { data: sourceItems, error: sourceError } = (await supabase
+  let query = supabase
     .from("shopping_list_items")
     .select("ingredient_id, quantity, unit")
     .eq("user_id", userId)
-    .eq("period_start", periodStart)
-    .eq("period_end", periodEnd)
-    .eq("section", source)) as {
+    .eq("section", source);
+  query = source === "dishes" && period
+    ? query.eq("period_start", period.periodStart).eq("period_end", period.periodEnd)
+    : query.is("period_start", null);
+
+  const { data: sourceItems, error: sourceError } = (await query) as {
     data: { ingredient_id: string; quantity: number; unit: string }[] | null;
     error: PostgrestError | null;
   };
@@ -309,70 +311,90 @@ export async function exportSection(
   if (!sourceItems || sourceItems.length === 0) {
     throw new Error(
       source === "dishes"
-        ? "« Courses des plats » est vide : rien à exporter."
+        ? "« Cette semaine » est vide : rien à exporter."
         : "« Courses supplémentaires » est vide : rien à exporter."
     );
   }
 
-  const { data: previousFinal, error: previousError } = (await supabase
+  const { data: existingFinal, error: finalError } = (await supabase
     .from("shopping_list_items")
-    .select("id, ingredient_id, unit, is_checked")
+    .select("id, ingredient_id, unit, quantity")
     .eq("user_id", userId)
-    .eq("period_start", periodStart)
-    .eq("period_end", periodEnd)
     .eq("section", "final")
-    .eq("origin_section", source)) as {
-    data: { id: string; ingredient_id: string; unit: string; is_checked: boolean }[] | null;
+    .is("period_start", null)) as {
+    data: { id: string; ingredient_id: string; unit: string; quantity: number }[] | null;
     error: PostgrestError | null;
   };
 
-  if (previousError) {
-    console.warn("Impossible de charger la liste finale existante", previousError);
+  if (finalError) {
+    console.warn("Impossible de charger la liste « À acheter »", finalError);
     throw new Error("Impossible d'exporter cette section");
   }
 
-  const checkedByKey = new Map(
-    (previousFinal ?? []).map((row) => [`${row.ingredient_id}-${row.unit}`, row.is_checked])
+  const existingByKey = new Map(
+    (existingFinal ?? []).map((row) => [`${row.ingredient_id}-${row.unit}`, row])
   );
 
-  if (previousFinal && previousFinal.length > 0) {
-    const { error: delError } = (await supabase
-      .from("shopping_list_items")
-      .delete()
-      .in(
-        "id",
-        previousFinal.map((row) => row.id)
-      )) as MutateResult;
-    if (delError) {
-      console.warn("Impossible de remplacer les articles déjà exportés", delError);
-      throw new Error("Impossible d'exporter cette section");
+  for (const item of sourceItems) {
+    const key = `${item.ingredient_id}-${item.unit}`;
+    const existing = existingByKey.get(key);
+    if (existing) {
+      const { error } = (await supabase
+        .from("shopping_list_items")
+        .update({
+          quantity: Number(existing.quantity) + Number(item.quantity),
+          updated_at: new Date().toISOString(),
+        } as never)
+        .eq("id", existing.id)) as MutateResult;
+      if (error) {
+        console.warn("Impossible de mettre à jour la liste « À acheter »", error);
+        throw new Error("Impossible d'exporter cette section");
+      }
+    } else {
+      const { error } = (await supabase.from("shopping_list_items").insert({
+        user_id: userId,
+        ingredient_id: item.ingredient_id,
+        quantity: item.quantity,
+        unit: item.unit,
+        section: "final",
+      } as never)) as MutateResult;
+      if (error) {
+        console.warn("Impossible d'écrire la liste « À acheter »", error);
+        throw new Error("Impossible d'exporter cette section");
+      }
     }
   }
 
-  const rows = sourceItems.map((item) => ({
-    user_id: userId,
-    ingredient_id: item.ingredient_id,
-    period_start: periodStart,
-    period_end: periodEnd,
-    quantity: item.quantity,
-    unit: item.unit,
-    is_checked: checkedByKey.get(`${item.ingredient_id}-${item.unit}`) ?? false,
-    section: "final" as const,
-    origin_section: source,
-  }));
+  await refreshShoppingList(period?.periodStart, period?.periodEnd);
 
-  const { error: insertError } = (await supabase
-    .from("shopping_list_items")
-    .insert(rows as never)) as MutateResult;
+  return { count: sourceItems.length };
+}
 
-  if (insertError) {
-    console.warn("Impossible d'écrire la liste finale", insertError);
-    throw new Error("Impossible d'exporter cette section");
+/** Vide entièrement la liste « À acheter » (bouton « Vider »). */
+export async function clearFinalList(): Promise<void> {
+  if (isDemoMode()) {
+    await clearDemoFinalList();
+    return;
   }
 
-  await refreshShoppingList(periodStart, periodEnd);
+  const supabase = getSupabase();
+  if (!supabase) throw new Error("Supabase n'est pas configuré");
 
-  return { count: rows.length };
+  const userId = await getCurrentUserId();
+  if (!userId) throw new Error("Utilisateur non connecté");
+
+  const { error } = (await supabase
+    .from("shopping_list_items")
+    .delete()
+    .eq("user_id", userId)
+    .eq("section", "final")) as MutateResult;
+
+  if (error) {
+    console.warn("Impossible de vider la liste « À acheter »", error);
+    throw new Error("Impossible de vider la liste");
+  }
+
+  await refreshShoppingList();
 }
 
 export interface ShoppingPeriod {

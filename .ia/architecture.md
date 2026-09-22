@@ -133,25 +133,42 @@ de répétition (`meal_cycle_entries.dish_id` reste `not null`) :
 seulement » quand `special` est fourni, sans poser la question de
 portée même si un motif est actif.
 
-**Liste de courses en trois sections (`shopping_list_items.section`)** :
-`dishes` (générée depuis le planning, comportement historique),
-`extra` (ajoutée à la main via le formulaire en haut de `/courses`) et
-`final` (cochable, remplie par les boutons « Exporter vers la liste
-finale » des deux premières). `origin_section` (uniquement sur les
-lignes `final`) retient de quelle section chaque ligne a été exportée :
-exporter une section supprime puis réinsère uniquement les lignes
-`final` qu'elle avait produites (pas celles de l'autre section), en
-conservant l'état coché (`is_checked`) d'un article qui reste présent
-(même ingrédient + unité) d'un export à l'autre — un nouvel export
-après régénération/ajout resynchronise donc sans dupliquer. Limite
-connue : si les deux sections contiennent le même ingrédient, la liste
-finale affiche deux lignes séparées (pas de fusion entre sections). Un
-article `extra` ajouté deux fois (même ingrédient + unité + période)
-fusionne ses quantités au lieu de dupliquer. Voir
-`0009_shopping_list_sections.sql`, qui remplace aussi l'ancien index
-unique (`user_id, ingredient_id, period_start, period_end`, qui ne
-tenait compte ni de l'unité ni de la section) par un index incluant
-`unit` et `section`.
+**Liste de courses en trois sections (`shopping_list_items.section`)**,
+présentées comme deux onglets + une liste toujours visible sur l'écran
+`/courses` :
+- `dishes` (onglet « Cette semaine ») : générée depuis le planning sur
+  une période choisie (`period_start`/`period_end` non null pour cette
+  section seulement) — comportement historique, inchangé.
+- `extra` (onglet « Courses supplémentaires ») : ajoutée à la main
+  (recherche/autocomplétion sur les ingrédients déjà connus, sinon
+  création à la volée — réutilise le référentiel `ingredients`, comme
+  les ingrédients de plat). Liste **continue** : `period_start`/
+  `period_end` valent `null`, pas de notion de durée.
+- `final` (section « À acheter », toujours visible sous les deux
+  onglets) : cochable, remplie par le bouton « Exporter vers « À
+  acheter » » de chacune des deux premières sections, vidée
+  manuellement (bouton « Vider », supprime toutes les lignes `final` de
+  l'utilisateur). Liste continue elle aussi (`period_start`/
+  `period_end` null).
+
+**Export = fusion, pas remplacement.** `exportSection` (`generate.ts`)
+additionne la quantité de chaque article de la section source à la
+ligne `final` correspondante (même `ingredient_id` + `unit`), ou crée
+la ligne si absente — jamais de suppression automatique. Exporter
+plusieurs fois après avoir régénéré/ajouté des articles accumule donc
+sans perdre ce qui était déjà dans « À acheter » ; réexporter le MÊME
+contenu sans rien changer entre deux clics additionne deux fois (pas de
+détection d'export identique) — le bouton « Vider » est la seule façon
+de remettre la liste à zéro. Limite connue : si le même ingrédient
+existe dans les deux sections, « À acheter » fusionne quand même (une
+seule ligne, unicité par ingrédient + unité, pas par section d'origine
+— contrairement à la première version de cette fonctionnalité qui
+gardait une ligne par section, voir `.ia/decisions.md` 2026-09-22).
+
+Un article `extra` ajouté deux fois (même ingrédient + unité) fusionne
+ses quantités au lieu de dupliquer (recherche d'une ligne existante
+avant insert, pas de contrainte unique en base sur les sections sans
+période — voir migration `0011`).
 
 **Créneaux de repas** : l'enum Postgres `meal_slot_type` vaut
 `breakfast | lunch | snack | dinner` (migration 0006 ajoute `snack`).

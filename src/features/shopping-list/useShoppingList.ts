@@ -15,19 +15,25 @@ function mapItem(item: LocalShoppingListItem): ShoppingListItem {
     unit: item.unit,
     isChecked: item.isChecked,
     section: item.section,
-    originSection: item.originSection,
   };
+}
+
+export interface ShoppingListItemWithPeriod extends ShoppingListItem {
+  /** Uniquement pour la section « dishes » ; `null` pour « extra »/« final ». */
+  periodStart: string | null;
+  periodEnd: string | null;
 }
 
 /**
  * Source de vérité = Dexie. On lit toujours la table entière pour que
  * useLiveQuery s'abonne correctement (un early-return avant la lecture
  * Dexie empêchait les mises à jour après génération / cochage).
+ *
+ * Renvoie TOUS les articles de l'utilisateur (les trois sections) — à
+ * l'appelant de filtrer par section, et par période pour « dishes »
+ * (seule section liée à une période).
  */
-export function useShoppingList(
-  periodStart: string,
-  periodEnd: string
-): ShoppingListItem[] | undefined {
+export function useShoppingList(): ShoppingListItemWithPeriod[] | undefined {
   return useLiveQuery(async () => {
     // Toujours observer la table, même avant d'avoir l'userId.
     const all = await getDb().shoppingListItems.toArray();
@@ -35,19 +41,18 @@ export function useShoppingList(
     if (!userId) return [];
 
     return all
-      .filter(
-        (item) =>
-          item.userId === userId &&
-          item.periodStart === periodStart &&
-          item.periodEnd === periodEnd
-      )
-      .map(mapItem)
+      .filter((item) => item.userId === userId)
+      .map((item) => ({
+        ...mapItem(item),
+        periodStart: item.periodStart,
+        periodEnd: item.periodEnd,
+      }))
       .sort((a, b) =>
         a.ingredientName.localeCompare(b.ingredientName, "fr", {
           sensitivity: "base",
         })
       );
-  }, [periodStart, periodEnd]);
+  }, []);
 }
 
 /** Coche/décoche un article : écriture locale immédiate + file de synchro. */
@@ -87,13 +92,48 @@ export async function removeItem(itemId: string): Promise<void> {
   if (error) console.warn("Suppression Supabase échouée", error);
 }
 
+interface RemoteRow {
+  id: string;
+  ingredient_id: string;
+  quantity: number;
+  unit: string;
+  is_checked: boolean;
+  section: "dishes" | "extra" | "final";
+  period_start: string | null;
+  period_end: string | null;
+  updated_at: string;
+  ingredients: { name: string } | null;
+}
+
+function toLocalRow(row: RemoteRow, userId: string): LocalShoppingListItem {
+  return {
+    id: row.id,
+    userId,
+    ingredientId: row.ingredient_id,
+    ingredientName: row.ingredients?.name ?? "",
+    periodStart: row.period_start,
+    periodEnd: row.period_end,
+    quantity: row.quantity,
+    unit: row.unit,
+    isChecked: row.is_checked,
+    section: row.section,
+    updatedAt: row.updated_at,
+  };
+}
+
+const SELECT_COLUMNS =
+  "id, ingredient_id, quantity, unit, is_checked, section, period_start, period_end, updated_at, ingredients(name)";
+
 /**
- * Recharge la liste depuis Supabase vers Dexie pour une période.
- * Remplace entièrement le cache local de cette période.
+ * Recharge le cache Dexie depuis Supabase : les sections « extra » et
+ * « final » en entier (listes continues, pas de période), plus la
+ * section « dishes » pour `periodStart`/`periodEnd` si fournis (omis
+ * quand on n'a pas encore de période à afficher, ex. avant que l'onglet
+ * « Cette semaine » ait choisi sa durée).
  */
 export async function refreshShoppingList(
-  periodStart: string,
-  periodEnd: string
+  periodStart?: string,
+  periodEnd?: string
 ): Promise<void> {
   if (isDemoMode()) return;
 
@@ -103,66 +143,68 @@ export async function refreshShoppingList(
   const userId = await getCurrentUserId();
   if (!userId) return;
 
-  const { data, error } = (await supabase
+  const ongoingQuery = supabase
     .from("shopping_list_items")
-    .select(
-      "id, ingredient_id, quantity, unit, is_checked, section, origin_section, updated_at, ingredients(name)"
-    )
+    .select(SELECT_COLUMNS)
     .eq("user_id", userId)
-    .eq("period_start", periodStart)
-    .eq("period_end", periodEnd)) as {
-    data: Array<{
-      id: string;
-      ingredient_id: string;
-      quantity: number;
-      unit: string;
-      is_checked: boolean;
-      section: "dishes" | "extra" | "final";
-      origin_section: "dishes" | "extra" | null;
-      updated_at: string;
-      ingredients: { name: string } | null;
-    }> | null;
+    .in("section", ["extra", "final"]) as unknown as {
+    data: RemoteRow[] | null;
     error: PostgrestError | null;
   };
+  const { data: ongoing, error: ongoingError } = await ongoingQuery;
 
-  if (error || !data) {
-    console.warn("Impossible de rafraîchir la liste de courses", error);
+  if (ongoingError || !ongoing) {
+    console.warn("Impossible de rafraîchir la liste de courses", ongoingError);
     return;
   }
 
+  let dishesRows: RemoteRow[] = [];
+  if (periodStart && periodEnd) {
+    const { data, error } = (await supabase
+      .from("shopping_list_items")
+      .select(SELECT_COLUMNS)
+      .eq("user_id", userId)
+      .eq("section", "dishes")
+      .eq("period_start", periodStart)
+      .eq("period_end", periodEnd)) as { data: RemoteRow[] | null; error: PostgrestError | null };
+    if (error) {
+      console.warn("Impossible de rafraîchir la section « Cette semaine »", error);
+    } else {
+      dishesRows = data ?? [];
+    }
+  }
+
   const db = getDb();
+
   await db.shoppingListItems
     .where("userId")
     .equals(userId)
-    .filter(
-      (item) =>
-        item.periodStart === periodStart && item.periodEnd === periodEnd
-    )
+    .filter((item) => item.section === "extra" || item.section === "final")
     .delete();
 
-  if (data.length === 0) return;
+  if (periodStart && periodEnd) {
+    await db.shoppingListItems
+      .where("userId")
+      .equals(userId)
+      .filter(
+        (item) =>
+          item.section === "dishes" &&
+          item.periodStart === periodStart &&
+          item.periodEnd === periodEnd
+      )
+      .delete();
+  }
 
-  await db.shoppingListItems.bulkPut(
-    data.map((row) => ({
-      id: row.id,
-      userId,
-      ingredientId: row.ingredient_id,
-      ingredientName: row.ingredients?.name ?? "",
-      periodStart,
-      periodEnd,
-      quantity: row.quantity,
-      unit: row.unit,
-      isChecked: row.is_checked,
-      section: row.section,
-      originSection: row.origin_section,
-      updatedAt: row.updated_at,
-    }))
-  );
+  const rows = [...ongoing, ...dishesRows].map((row) => toLocalRow(row, userId));
+  if (rows.length > 0) {
+    await db.shoppingListItems.bulkPut(rows);
+  }
 }
 
 /**
- * Vide le cache Dexie pour une période (avant régénération), limité à
- * une section si fournie (sinon toutes les sections).
+ * Vide le cache Dexie pour une période, limité à une section si fournie
+ * (sinon toutes les sections) — sert avant de régénérer la section
+ * « dishes ».
  */
 export async function clearLocalShoppingListPeriod(
   periodStart: string,

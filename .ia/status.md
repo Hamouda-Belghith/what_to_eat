@@ -3,6 +3,18 @@
 Date: 2026-09-22
 
 Résumé:
+- **Liste de courses réorganisée en 2 onglets + « À acheter »**
+  (2026-09-22) : `/courses` a désormais deux onglets — « Cette semaine »
+  (identique à avant : période, génération depuis le planning, export)
+  et « Courses supplémentaires » (ajout à la main avec recherche parmi
+  les ingrédients déjà utilisés, sinon création). Une section « À
+  acheter » toujours visible en dessous accumule ce qui est exporté des
+  deux onglets (fusion des quantités, pas de remplacement) et se vide
+  avec un bouton « Vider ». Contrairement à la veille, « Courses
+  supplémentaires » et « À acheter » ne sont plus liées à une période.
+  Voir `.ia/decisions.md`. **Migration à appliquer en production** :
+  `0011_shopping_list_ongoing_lists.sql` (déjà appliquée par
+  l'assistant, voir `.ia/agents.md`).
 - **Correctif prod : contraintes unique globales héritées, bloquant le
   Planning et l'export de la liste de courses** (2026-09-22). Trois
   contraintes non scopées par `user_id` (leftovers d'avant

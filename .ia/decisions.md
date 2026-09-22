@@ -6,6 +6,51 @@ haut du fichier (ordre antéchronologique).
 
 ---
 
+## 2026-09-22 — Liste de courses : deux onglets + « À acheter » continue (au lieu de trois sections empilées, liées à une période)
+
+**Contexte** : la présentation de la veille (trois sections empilées
+sur la même page, toutes liées à la même période choisie en haut) ne
+convenait pas à l'usage réel. Demande : deux onglets (« Cette semaine »
+inchangé, « Courses supplémentaires » avec ajout à la main + recherche
+dans les articles déjà utilisés, stockés en base) et une liste finale
+renommée « À acheter », vidée par un bouton dédié plutôt que par
+regénération de période.
+
+**Décisions** :
+- **`extra` et `final` deviennent des listes continues, sans
+  période** (`period_start`/`period_end` rendus nullables, migration
+  `0011`) : seule la section `dishes` (« Cette semaine ») reste liée à
+  une période, cohérent avec « rien ne change » pour cette partie. Les
+  courses supplémentaires et « À acheter » s'accumulent au fil du temps
+  et ne se réinitialisent plus au changement de période — seul le
+  bouton « Vider » réinitialise « À acheter ».
+- **Le catalogue de recherche pour les courses supplémentaires
+  réutilise `ingredients`** (déjà partagé avec les ingrédients de
+  plat), pas une nouvelle table : « stocké en base pour une prochaine
+  utilisation » est déjà ce que fait `fetchIngredients`/l'upsert par
+  nom, il manquait une vraie UI de recherche (`IngredientSearchField`,
+  liste de suggestions filtrées) à la place du `<datalist>` natif.
+- **Export = fusion (addition des quantités), plus remplacement par
+  origine.** La version précédente supprimait puis réinsérait les
+  lignes `final` d'une section pour rester idempotente à la
+  régénération ; ce mécanisme (`origin_section`) est retiré (colonne
+  supprimée, migration `0011`) car il n'a plus de sens sans période : un
+  export additionne simplement dans « À acheter », qui ne se vide plus
+  que manuellement. Conséquence acceptée : cliquer deux fois sur
+  « Exporter » sans rien changer entre-temps additionne deux fois (pas
+  de détection de contenu identique) — au profit d'un modèle plus simple
+  et prévisible (« envoie vers », comme demandé).
+- **Même ingrédient dans les deux sections → fusionné dans « À
+  acheter »** (une ligne, par ingrédient + unité), plutôt que deux
+  lignes séparées comme dans la version précédente — plus cohérent
+  maintenant que l'origine n'est plus trackée.
+
+**Migration** : `0011_shopping_list_ongoing_lists.sql` (period_start/
+period_end nullable sur `shopping_list_items`, suppression de
+`origin_section`), appliquée en production le 2026-09-22.
+
+---
+
 ## 2026-09-22 — Correctif : contraintes unique globales héritées, bloquant le Planning et l'export de la liste de courses
 
 **Contexte** : l'utilisateur signale « Enregistrement du repas

@@ -1,8 +1,13 @@
 /**
- * - `dishes` : générée automatiquement depuis les plats planifiés.
- * - `extra` : articles ajoutés à la main, hors plats.
- * - `final` : la liste réellement utilisée au supermarché (cochable),
- *   remplie par les boutons « Exporter » des deux sections précédentes.
+ * - `dishes` : générée automatiquement depuis les plats planifiés sur
+ *   une période choisie (onglet « Cette semaine »). Seule section liée
+ *   à une période.
+ * - `extra` : articles ajoutés à la main (onglet « Courses
+ *   supplémentaires »), liste continue (pas de période).
+ * - `final` : la liste « À acheter », réellement utilisée au
+ *   supermarché (cochable), remplie par les boutons « Exporter » des
+ *   deux sections précédentes et vidée manuellement (bouton « Vider »).
+ *   Liste continue elle aussi.
  */
 export type ShoppingSection = "dishes" | "extra" | "final";
 
@@ -14,6 +19,4 @@ export interface ShoppingListItem {
   unit: string;
   isChecked: boolean;
   section: ShoppingSection;
-  /** Pour un article de `final` : la section dont il a été exporté. */
-  originSection: "dishes" | "extra" | null;
 }

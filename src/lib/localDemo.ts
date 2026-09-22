@@ -672,7 +672,6 @@ export async function generateDemoShoppingList(
         unit,
         isChecked: false,
         section: "dishes",
-        originSection: null,
         updatedAt: now(),
       });
     }
@@ -683,13 +682,13 @@ export async function generateDemoShoppingList(
 }
 
 /**
- * Ajoute un article à la section « extra ». Fusionne avec un article
- * existant de même ingrédient + unité sur la période (quantités
- * additionnées) plutôt que de dupliquer une ligne.
+ * Ajoute un article à la section « extra » (courses supplémentaires,
+ * liste continue — pas de période). Réutilise l'ingrédient référentiel
+ * existant s'il porte déjà ce nom, sinon en crée un nouveau. Fusionne
+ * avec un article déjà présent (même ingrédient + unité) plutôt que de
+ * dupliquer une ligne.
  */
 export async function addDemoExtraItem(
-  periodStart: string,
-  periodEnd: string,
   name: string,
   quantity: number,
   unit: string
@@ -712,8 +711,7 @@ export async function addDemoExtraItem(
   const existing = await db.shoppingListItems
     .filter(
       (item) =>
-        item.periodStart === periodStart &&
-        item.periodEnd === periodEnd &&
+        item.periodStart === null &&
         item.section === "extra" &&
         item.ingredientId === ingredientId &&
         item.unit === normalizedUnit
@@ -731,81 +729,90 @@ export async function addDemoExtraItem(
       userId,
       ingredientId,
       ingredientName: trimmedName,
-      periodStart,
-      periodEnd,
+      periodStart: null,
+      periodEnd: null,
       quantity,
       unit: normalizedUnit,
       isChecked: false,
       section: "extra",
-      originSection: null,
       updatedAt: now(),
     });
   }
 }
 
 /**
- * Envoie le contenu actuel d'une section (« dishes » ou « extra ») vers
- * la liste finale. Voir `exportSection` (generate.ts) pour la sémantique
- * détaillée — même comportement en mode démo.
+ * Envoie le contenu actuel d'une section (« dishes » sur `period`, ou
+ * « extra ») vers la liste « À acheter ». Fusionne avec un article déjà
+ * présent (même ingrédient + unité) en additionnant les quantités —
+ * voir `exportSection` (generate.ts) pour la sémantique détaillée, même
+ * comportement en mode démo.
  */
 export async function exportDemoSection(
-  periodStart: string,
-  periodEnd: string,
-  source: "dishes" | "extra"
+  source: "dishes" | "extra",
+  period?: { periodStart: string; periodEnd: string }
 ): Promise<{ count: number }> {
   const db = getDb();
   const userId = DEMO_USER_ID;
 
   const sourceItems = await db.shoppingListItems
-    .filter(
-      (item) =>
-        item.periodStart === periodStart &&
-        item.periodEnd === periodEnd &&
-        item.section === source
-    )
+    .filter((item) => {
+      if (item.section !== source) return false;
+      if (source === "dishes") {
+        return item.periodStart === (period?.periodStart ?? null) && item.periodEnd === (period?.periodEnd ?? null);
+      }
+      return item.periodStart === null;
+    })
     .toArray();
 
   if (sourceItems.length === 0) {
     throw new Error(
       source === "dishes"
-        ? "« Courses des plats » est vide : rien à exporter."
+        ? "« Cette semaine » est vide : rien à exporter."
         : "« Courses supplémentaires » est vide : rien à exporter."
     );
   }
 
-  const previousFinal = await db.shoppingListItems
-    .filter(
-      (item) =>
-        item.periodStart === periodStart &&
-        item.periodEnd === periodEnd &&
-        item.section === "final" &&
-        item.originSection === source
-    )
+  const existingFinal = await db.shoppingListItems
+    .filter((item) => item.section === "final" && item.periodStart === null)
     .toArray();
-
-  const checkedByKey = new Map(
-    previousFinal.map((item) => [`${item.ingredientId}-${item.unit}`, item.isChecked])
+  const existingByKey = new Map(
+    existingFinal.map((item) => [`${item.ingredientId}-${item.unit}`, item])
   );
 
-  await db.shoppingListItems.bulkDelete(previousFinal.map((item) => item.id));
+  for (const item of sourceItems) {
+    const key = `${item.ingredientId}-${item.unit}`;
+    const existing = existingByKey.get(key);
+    if (existing) {
+      await db.shoppingListItems.update(existing.id, {
+        quantity: existing.quantity + item.quantity,
+        updatedAt: now(),
+      });
+    } else {
+      const row: LocalShoppingListItem = {
+        id: crypto.randomUUID(),
+        userId,
+        ingredientId: item.ingredientId,
+        ingredientName: item.ingredientName,
+        periodStart: null,
+        periodEnd: null,
+        quantity: item.quantity,
+        unit: item.unit,
+        isChecked: false,
+        section: "final",
+        updatedAt: now(),
+      };
+      await db.shoppingListItems.add(row);
+      existingByKey.set(key, row);
+    }
+  }
 
-  const rows: LocalShoppingListItem[] = sourceItems.map((item) => ({
-    id: crypto.randomUUID(),
-    userId,
-    ingredientId: item.ingredientId,
-    ingredientName: item.ingredientName,
-    periodStart,
-    periodEnd,
-    quantity: item.quantity,
-    unit: item.unit,
-    isChecked: checkedByKey.get(`${item.ingredientId}-${item.unit}`) ?? false,
-    section: "final",
-    originSection: source,
-    updatedAt: now(),
-  }));
+  return { count: sourceItems.length };
+}
 
-  await db.shoppingListItems.bulkAdd(rows);
-  return { count: rows.length };
+/** Vide entièrement la liste « À acheter » (bouton « Vider »). */
+export async function clearDemoFinalList(): Promise<void> {
+  const db = getDb();
+  await db.shoppingListItems.filter((item) => item.section === "final").delete();
 }
 
 export async function refreshDemoShoppingList(

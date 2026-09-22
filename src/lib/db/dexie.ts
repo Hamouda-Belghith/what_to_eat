@@ -7,13 +7,14 @@ export interface LocalShoppingListItem {
   userId: string;
   ingredientId: string;
   ingredientName: string; // dénormalisé pour affichage offline sans jointure
-  periodStart: string; // ISO date (YYYY-MM-DD)
-  periodEnd: string;
+  // ISO date (YYYY-MM-DD). Uniquement pour la section "dishes" (générée
+  // sur une période) ; null pour "extra"/"final", listes continues.
+  periodStart: string | null;
+  periodEnd: string | null;
   quantity: number;
   unit: string;
   isChecked: boolean;
   section: ShoppingSection;
-  originSection: "dishes" | "extra" | null;
   updatedAt: string;
 }
 

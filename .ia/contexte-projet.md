@@ -46,13 +46,17 @@ accueillir d'autres foyers pour l'instant.
   ingrédients des plats planifiés sur une période).
 - Permettre à l'utilisateur de vérifier ce qu'il lui manque avant de
   faire les courses (liste de courses cochable).
-- La liste de courses se compose de trois sections : celle générée
-  depuis les plats planifiés, celle des courses ajoutées à la main
-  (hors plats), et la liste finale qu'on emmène au supermarché —
-  remplie en « exportant » les deux premières vers elle. La liste
-  finale doit être consultable et modifiable hors-ligne (usage typique :
-  au supermarché, sans réseau) ; générer/ajouter/exporter suppose une
-  connexion réseau (comme le reste de l'app hors liste de courses).
+- L'écran Courses a deux onglets : « Cette semaine » (générée depuis
+  les plats planifiés sur une période choisie, inchangé) et « Courses
+  supplémentaires » (ajout à la main, avec recherche parmi les
+  ingrédients déjà utilisés — sinon création à la volée). Chacun a un
+  bouton « Exporter vers « À acheter » ». En dessous, toujours visible :
+  la liste « À acheter », cochable, qui accumule ce qui a été exporté
+  (pas liée à une période) et se vide avec un bouton « Vider ». « À
+  acheter » doit être consultable et modifiable hors-ligne (usage
+  typique : au supermarché, sans réseau) ; générer/ajouter/exporter/vider
+  suppose une connexion réseau (comme le reste de l'app hors liste de
+  courses).
 - Rechercher un plat par son nom (ou sa description) depuis l'écran
   Plats, pour retrouver rapidement une recette au fur et à mesure que
   la liste s'agrandit.

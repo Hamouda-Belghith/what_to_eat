@@ -127,25 +127,23 @@ export interface Database {
         Row: {
           id: string;
           ingredient_id: string;
-          period_start: string;
-          period_end: string;
+          period_start: string | null;
+          period_end: string | null;
           quantity: number;
           unit: string;
           is_checked: boolean;
           section: string;
-          origin_section: string | null;
           updated_at: string;
         };
         Insert: {
           id?: string;
           ingredient_id: string;
-          period_start: string;
-          period_end: string;
+          period_start?: string | null;
+          period_end?: string | null;
           quantity: number;
           unit: string;
           is_checked?: boolean;
           section?: string;
-          origin_section?: string | null;
           updated_at?: string;
         };
         Update: Partial<
